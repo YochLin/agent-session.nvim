@@ -1,0 +1,96 @@
+*agent-session.txt*  Agent session manager for Neovim
+
+==============================================================================
+CONTENTS                                               *agent-session-contents*
+
+    1. Introduction ............................... |agent-session-intro|
+    2. Installation ............................... |agent-session-installation|
+    3. Configuration .............................. |agent-session-config|
+    4. Commands ................................... |agent-session-commands|
+    5. Lua API .................................... |agent-session-api|
+
+==============================================================================
+1. INTRODUCTION                                           *agent-session-intro*
+
+agent-session.nvim is a Neovim plugin for managing multiple AI agent sessions
+(e.g., Claude CLI, custom LLM CLI tools) within floating or split windows.
+
+==============================================================================
+2. INSTALLATION                                    *agent-session-installation*
+
+Using lazy.nvim: >lua
+    {
+      "yoch/agent-session.nvim",
+      opts = {
+        default_agent = "claude",
+      },
+      keys = {
+        { "<leader>as", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session" },
+        { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session" },
+        { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Agent Sessions" },
+      },
+    }
+<
+
+==============================================================================
+3. CONFIGURATION                                         *agent-session-config*
+
+Default options: >lua
+    require("agent-session").setup({
+      session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
+      default_agent = "claude",
+      agents = {
+        claude = {
+          cmd = "claude",
+          args = {},
+          env = {},
+        },
+      },
+      ui = {
+        position = "float", -- "float", "split", "vsplit"
+        width = 0.85,
+        height = 0.8,
+        border = "rounded",
+        title = " Agent Session ",
+      },
+    })
+<
+
+==============================================================================
+4. COMMANDS                                           *agent-session-commands*
+
+:AgentSession [toggle|new|list|delete]
+    Main command to manage agent sessions.
+
+:AgentSessionToggle
+    Toggle the active agent session window.
+
+:AgentSessionNew [name] [agent]
+    Create and launch a new agent session.
+
+:AgentSessionList
+    Show session selector picker.
+
+==============================================================================
+5. LUA API                                                 *agent-session-api*
+
+require("agent-session").setup(opts)
+    Initialize plugin with custom configuration.
+
+require("agent-session").new_session(name, agent_name)
+    Create a new agent session.
+
+require("agent-session").toggle()
+    Toggle current session window.
+
+require("agent-session").list_sessions()
+    Open session selector via `vim.ui.select`.
+
+require("agent-session").send(text)
+    Send text / prompt into current active session.
+
+require("agent-session").delete_session(id)
+    Close and delete an agent session.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

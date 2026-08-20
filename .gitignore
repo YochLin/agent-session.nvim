@@ -1,0 +1,25 @@
+# Neovim swap and backup files
+*.swp
+*.swo
+*.un~
+Session.vim
+.netrwhist
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Testing & Lazy cache/data
+.tests/
+tests/data/
+tests/runtime/
+.cache/
+
+# Headroom / local Claude data (if needed)
+.claude/settings.local.json
+.claude/.headroom_wrap_marker.json
+
+# Local tool configs
+.serena/
