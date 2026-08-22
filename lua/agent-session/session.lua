@@ -111,9 +111,44 @@ function M.set_current(id)
     data = { session_id = id },
   })
 
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  if ok_ui and ui_mod.refresh_title then
+    ui_mod.refresh_title()
+  end
+
   local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
   if ok_sb and sidebar_mod.render then
     sidebar_mod.render()
+  end
+end
+
+---Check and synchronize real process/buffer status for a session
+---@param session_or_id Session|string
+---@return string status
+function M.sync_status(session_or_id)
+  local sess = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
+  if not sess then
+    return "stopped"
+  end
+
+  if sess.status ~= "stopped" then
+    if not sess.bufnr or not vim.api.nvim_buf_is_valid(sess.bufnr) then
+      M.set_status(sess, "stopped")
+    elseif sess.job_id and sess.job_id > 0 then
+      local ok, res = pcall(vim.fn.jobwait, { sess.job_id }, 0)
+      if ok and res and res[1] and res[1] ~= -1 then
+        M.set_status(sess, "stopped")
+      end
+    end
+  end
+
+  return sess.status
+end
+
+---Synchronize status for all active sessions
+function M.sync_all()
+  for _, sess in pairs(M._active_sessions) do
+    M.sync_status(sess)
   end
 end
 
@@ -121,13 +156,18 @@ end
 ---@param session_or_id Session|string
 ---@param new_status "running"|"idle"|"stopped"
 function M.set_status(session_or_id, new_status)
-  local session = type(session_or_id) == "table" and session_or_id or M.get(session_or_id)
+  local session = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
   if not session or session.status == new_status then
     return
   end
 
   local old_status = session.status
   session.status = new_status
+
+  if new_status == "stopped" and session._timer and not session._timer:is_closing() then
+    session._timer:stop()
+    session._timer:close()
+  end
 
   vim.schedule(function()
     local opts = config.get()

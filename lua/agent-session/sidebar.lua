@@ -28,6 +28,7 @@ function M.render()
     return
   end
 
+  session_mod.sync_all()
   setup_highlights()
   vim.bo[M._bufnr].modifiable = true
   M._line_map = {}
@@ -465,9 +466,9 @@ function M.toggle()
   end
 end
 
--- Auto-refresh sidebar when session status changes
+-- Auto-refresh sidebar when session status changes or current session changes
 vim.api.nvim_create_autocmd("User", {
-  pattern = "AgentSessionStatusChanged",
+  pattern = { "AgentSessionStatusChanged", "AgentSessionCurrentChanged" },
   callback = function()
     if M._win and vim.api.nvim_win_is_valid(M._win) then
       M.render()

@@ -11,6 +11,7 @@ function M.get_status_data()
     return nil
   end
 
+  session.sync_status(cur)
   local opts = config.get()
   local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
   local icon = icons[cur.status] or ""
