@@ -52,6 +52,11 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     local target = args[2]
     local text = #args > 2 and table.concat(args, " ", 3) or nil
     agent_session.prompt_session(target, text)
+  elseif subcmd == "pipe" then
+    local source = args[2]
+    local dest = args[3]
+    local instruction = #args > 3 and table.concat(args, " ", 4) or nil
+    agent_session.pipe_session(source, dest, instruction)
   else
     vim.notify("[agent-session] Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
   end
@@ -60,7 +65,7 @@ end, {
   complete = function(_, line)
     local l = vim.split(line, "%s+", { trimempty = true })
     local subcommands =
-      { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename", "prompt", "send" }
+      { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename", "prompt", "send", "pipe" }
     local has_trailing_space = vim.endswith(line, " ")
 
     if #l == 1 and has_trailing_space then
@@ -78,9 +83,14 @@ end, {
         return vim.tbl_filter(function(item)
           return vim.startswith(item, lead)
         end, agents)
-      elseif sub == "delete" or sub == "prompt" or sub == "send" or sub == "send-to" then
+      elseif sub == "delete" or sub == "prompt" or sub == "send" or sub == "send-to" or sub == "pipe" then
         return complete_session_targets(lead)
       end
+    elseif
+      (#l == 3 and has_trailing_space and l[2] == "pipe") or (#l == 4 and not has_trailing_space and l[2] == "pipe")
+    then
+      local lead = has_trailing_space and "" or (l[4] or "")
+      return complete_session_targets(lead)
     end
     return {}
   end,
@@ -164,6 +174,36 @@ end, {
     return {}
   end,
   desc = "Send a command to a specific session (alias of AgentSessionPrompt)",
+})
+
+-- :AgentSessionPipe [source] [target] [instruction...]
+vim.api.nvim_create_user_command("AgentSessionPipe", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  local source = args[1]
+  local dest = args[2]
+  local instruction = #args > 2 and table.concat(args, " ", 3) or nil
+  local pipe_opts = {}
+  if opts.range > 0 then
+    pipe_opts.range = { opts.line1, opts.line2 }
+  end
+  agent_session.pipe_session(source, dest, instruction, pipe_opts)
+end, {
+  range = true,
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    local has_trailing_space = vim.endswith(line, " ")
+    if #l == 1 and has_trailing_space then
+      return complete_session_targets("")
+    elseif #l <= 2 and not has_trailing_space then
+      return complete_session_targets(l[2] or "")
+    elseif (#l == 2 and has_trailing_space) or (#l == 3 and not has_trailing_space) then
+      local lead = has_trailing_space and "" or (l[3] or "")
+      return complete_session_targets(lead)
+    end
+    return {}
+  end,
+  desc = "Pipe output from one session into another session with optional instruction",
 })
 
 -- :AgentSessionRename [new_name] [target]

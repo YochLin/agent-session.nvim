@@ -35,6 +35,7 @@ return {
     "AgentSessionSelectAgent",
     "AgentSessionPrompt",
     "AgentSessionSendCommand",
+    "AgentSessionPipe",
     "AgentSessionRename",
     "AgentSessionDelete",
     "AgentSessionSendLine",
@@ -49,10 +50,10 @@ return {
     { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },
     { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Active Sessions" },
     { "<leader>ap", "<cmd>AgentSessionPrompt<cr>", desc = "Prompt / Command Target Session" },
+    { "<leader>aP", "<cmd>AgentSessionPipe<cr>", mode = { "n", "v" }, desc = "Pipe Output to Target Session" },
     { "<leader>ar", "<cmd>AgentSessionRename<cr>", desc = "Rename Session" },
     { "<leader>as", "<cmd>AgentSessionSendLine<cr>", mode = { "n", "v" }, desc = "Send Line/Selection Ref to Session" },
     { "<leader>ab", "<cmd>AgentSessionSendFile<cr>", desc = "Send File Ref to Session" },
-    { "<leader>aP", "<cmd>AgentSessionSendLineTo<cr>", mode = { "n", "v" }, desc = "Send Selection Ref to Target Session" },
   },
   opts = {
     default_agent = "agy", -- "claude" | "agy" | "codex" | "gemini" | "sh"
@@ -149,6 +150,7 @@ require("agent-session").setup({
 | `:AgentSessionList` | Open interactive session picker to switch active session |
 | `:AgentSessionPrompt [target] [prompt]` | Send prompt/command to a specific session (interactive picker if omitted) |
 | `:AgentSessionSendCommand [target] [prompt]` | Alias for `:AgentSessionPrompt` |
+| `:AgentSessionPipe [source] [target] [instruction]` | Pipe output from one session into another session with optional instruction |
 | `:AgentSessionRename [name] [target]` | Rename current session or specified session |
 | `:AgentSessionDelete [target]` | Terminate and remove current or specified session |
 | `:AgentSessionSendLine` | Send `@file:line` (normal mode) or `@file:start-end` (visual mode) to active session |

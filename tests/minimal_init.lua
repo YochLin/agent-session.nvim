@@ -55,9 +55,9 @@ require("lazy").setup({
       { "<leader>ab", "<cmd>AgentSessionSendFile<cr>", desc = "Send File Ref to Session" },
       {
         "<leader>aP",
-        "<cmd>AgentSessionSendLineTo<cr>",
+        "<cmd>AgentSessionPipe<cr>",
         mode = { "n", "v" },
-        desc = "Send Selection Ref to Target Session",
+        desc = "Pipe Output to Target Session",
       },
     },
   },

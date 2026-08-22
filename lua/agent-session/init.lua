@@ -256,6 +256,139 @@ function M.send_file_ref_to(target)
   end
 end
 
+---Pipe output from a source session to a target session with optional instruction
+---@param source_target? string Session name or ID for source (or nil to pick interactively)
+---@param dest_target? string Session name or ID for target (or nil to pick interactively)
+---@param instruction? string Prompt/instruction for the target session (or nil to prompt via input)
+---@param opts? { lines?: number, full?: boolean, range?: integer[], open?: boolean, mode?: "auto"|"inline"|"file", pick_source?: boolean }
+function M.pipe_session(source_target, dest_target, instruction, opts)
+  opts = opts or {}
+  local all = session.get_all()
+  if vim.tbl_count(all) == 0 then
+    vim.notify("[agent-session] No active sessions found to pipe.", vim.log.levels.WARN)
+    return
+  end
+
+  local cur_sess = session.get_current()
+  local source_sess = nil
+  local dest_sess = nil
+  local inst = instruction
+
+  if source_target and vim.trim(source_target) ~= "" then
+    local s1 = session.find(vim.trim(source_target))
+    local s2 = dest_target and vim.trim(dest_target) ~= "" and session.find(vim.trim(dest_target)) or nil
+
+    if s1 and s2 then
+      source_sess = s1
+      dest_sess = s2
+    elseif s1 and not s2 then
+      if dest_target and vim.trim(dest_target) ~= "" then
+        inst = vim.trim(dest_target .. (inst and (" " .. inst) or ""))
+      end
+      if cur_sess and cur_sess.id ~= s1.id and not opts.pick_source then
+        source_sess = cur_sess
+        dest_sess = s1
+      else
+        source_sess = s1
+      end
+    end
+  end
+
+  local function proceed_with_source_and_dest(src, dst)
+    if not src or not dst then
+      return
+    end
+
+    if src.id == dst.id then
+      vim.notify("[agent-session] Source and target sessions cannot be the same.", vim.log.levels.WARN)
+      return
+    end
+
+    local output = session.extract_output(src, {
+      last_n = opts.lines or 60,
+      full = opts.full,
+      range = opts.range,
+    })
+
+    if not output or vim.trim(output) == "" then
+      vim.notify(string.format("[agent-session] No output captured from session '%s'", src.name), vim.log.levels.WARN)
+      return
+    end
+
+    local function send_piped_payload(instruction_text)
+      instruction_text = instruction_text and vim.trim(instruction_text) or ""
+      local out_lines = vim.split(output, "\n", { plain = true })
+      local line_count = #out_lines
+      local mode = opts.mode or "auto"
+
+      local payload
+      if mode == "file" or (mode == "auto" and line_count > 35) then
+        local dump_path = session.dump_pipe_context(src, output)
+        if instruction_text ~= "" then
+          payload = string.format("@%s %s", dump_path, instruction_text)
+        else
+          payload = string.format("@%s Please review and continue from the above session output.", dump_path)
+        end
+      else
+        if instruction_text ~= "" then
+          payload = string.format("[Context from session '%s']:\n---\n%s\n---\n%s", src.name, output, instruction_text)
+        else
+          payload = string.format(
+            "[Context from session '%s']:\n---\n%s\n---\nPlease review and continue based on the above output.",
+            src.name,
+            output
+          )
+        end
+      end
+
+      session.send_text(dst.id, payload, true)
+      vim.notify(
+        string.format("[agent-session] Piped output from '%s' to '%s' (%s)", src.name, dst.name, dst.agent),
+        vim.log.levels.INFO
+      )
+
+      if opts.open ~= false then
+        ui.open(dst, { focus_input = true })
+      end
+    end
+
+    if inst ~= nil and inst ~= "" then
+      send_piped_payload(inst)
+    else
+      vim.ui.input({
+        prompt = string.format("Instruction for '%s' (optional): ", dst.name),
+      }, function(input)
+        send_piped_payload(input)
+      end)
+    end
+  end
+
+  local function resolve_destination(src)
+    if dest_sess then
+      proceed_with_source_and_dest(src, dest_sess)
+    else
+      ui.select_session(function(dst)
+        proceed_with_source_and_dest(src, dst)
+      end, string.format("Select Target Session to Pipe from '%s' to:", src.name))
+    end
+  end
+
+  if source_sess then
+    resolve_destination(source_sess)
+  else
+    if cur_sess and not opts.pick_source then
+      resolve_destination(cur_sess)
+    else
+      ui.select_session(function(src)
+        resolve_destination(src)
+      end, "Select Source Session to Pipe from:")
+    end
+  end
+end
+
+---Alias for pipe_session
+M.pipe = M.pipe_session
+
 ---Rename the current or specified session
 ---@param new_name? string
 ---@param target? string Session name or ID (defaults to current active session)

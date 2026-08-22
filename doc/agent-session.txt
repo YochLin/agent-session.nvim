@@ -83,6 +83,9 @@ Default options: >lua
 :AgentSessionSendCommand [target] [prompt]
     Alias for `:AgentSessionPrompt`.
 
+:AgentSessionPipe [source] [target] [instruction]
+    Pipe output from one session into another session with optional instruction.
+
 :AgentSessionRename [name] [target]
     Rename current session or specified session.
 
@@ -118,6 +121,9 @@ require("agent-session").list_sessions()
 
 require("agent-session").prompt_session(target, text, opts)
     Send prompt / command to target session (or prompt interactively).
+
+require("agent-session").pipe_session(source, target, instruction, opts)
+    Pipe output from source session into target session.
 
 require("agent-session").send(text)
     Send text / prompt into current active session.
