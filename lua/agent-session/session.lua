@@ -38,6 +38,44 @@ function M.get(id)
   return M._active_sessions[id]
 end
 
+---Find a session by ID, exact name, or case-insensitive name
+---@param name_or_id string
+---@return Session|nil
+function M.find(name_or_id)
+  if not name_or_id or name_or_id == "" then
+    return nil
+  end
+
+  -- 1. Exact ID match
+  if M._active_sessions[name_or_id] then
+    return M._active_sessions[name_or_id]
+  end
+
+  -- 2. Exact Name match
+  for _, sess in pairs(M._active_sessions) do
+    if sess.name == name_or_id then
+      return sess
+    end
+  end
+
+  -- 3. Case-insensitive Name match
+  local lower = string.lower(name_or_id)
+  for _, sess in pairs(M._active_sessions) do
+    if string.lower(sess.name) == lower then
+      return sess
+    end
+  end
+
+  -- 4. Prefix match on ID or Name
+  for _, sess in pairs(M._active_sessions) do
+    if vim.startswith(sess.id, name_or_id) or vim.startswith(string.lower(sess.name), lower) then
+      return sess
+    end
+  end
+
+  return nil
+end
+
 ---Get a session by buffer number
 ---@param bufnr number
 ---@return Session|nil
@@ -339,6 +377,90 @@ function M.send_text(id, text, submit)
     M.set_status(session, "running")
     vim.fn.chansend(session.job_id, submit and (text .. "\n") or text)
   end
+end
+
+---Strip ANSI escape codes, OSC sequences, and carriage returns from text
+---@param text string
+---@return string
+function M.strip_ansi(text)
+  if not text or text == "" then
+    return ""
+  end
+  local s = text:gsub("\27%[[0-9;?]*[a-zA-Z]", "")
+  s = s:gsub("\27%][0-9];[^\7]*\7", "")
+  s = s:gsub("\27%([a-zA-Z0-9]", "")
+  s = s:gsub("\r", "")
+  return s
+end
+
+---Extract and clean output text from a session's terminal buffer
+---@param session_or_id Session|string
+---@param opts? { last_n?: number, full?: boolean, range?: integer[] }
+---@return string|nil
+function M.extract_output(session_or_id, opts)
+  local sess = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
+  if not sess or not sess.bufnr or not vim.api.nvim_buf_is_valid(sess.bufnr) then
+    return nil
+  end
+
+  opts = opts or {}
+  local lines = {}
+  local total_lines = vim.api.nvim_buf_line_count(sess.bufnr)
+
+  if opts.range and #opts.range >= 2 then
+    local start_line = math.max(0, opts.range[1] - 1)
+    local end_line = math.min(total_lines, opts.range[2])
+    lines = vim.api.nvim_buf_get_lines(sess.bufnr, start_line, end_line, false)
+  elseif opts.full then
+    lines = vim.api.nvim_buf_get_lines(sess.bufnr, 0, -1, false)
+  else
+    local n = opts.last_n or 60
+    local start_idx = math.max(0, total_lines - n)
+    lines = vim.api.nvim_buf_get_lines(sess.bufnr, start_idx, -1, false)
+  end
+
+  local cleaned = {}
+  for _, line in ipairs(lines) do
+    local s = M.strip_ansi(line)
+    table.insert(cleaned, s)
+  end
+
+  while #cleaned > 0 and vim.trim(cleaned[1]) == "" do
+    table.remove(cleaned, 1)
+  end
+  while #cleaned > 0 and vim.trim(cleaned[#cleaned]) == "" do
+    table.remove(cleaned, #cleaned)
+  end
+
+  return table.concat(cleaned, "\n")
+end
+
+---Dump extracted session content to a temporary context file
+---@param session_or_id Session|string
+---@param content string
+---@return string File path
+function M.dump_pipe_context(session_or_id, content)
+  local sess = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
+  local sess_name = sess and sess.name or "session"
+  local opts = config.get()
+  local pipes_dir = (opts.session_dir or (vim.fn.stdpath("data") .. "/agent-sessions")) .. "/pipes"
+
+  if vim.fn.isdirectory(pipes_dir) == 0 then
+    vim.fn.mkdir(pipes_dir, "p")
+  end
+
+  local filename = string.format("pipe_%s_%s.md", sess_name:gsub("[^%w_%-]", "_"), os.date("%m%d-%H%M%S"))
+  local filepath = pipes_dir .. "/" .. filename
+
+  local file, err = io.open(filepath, "w")
+  if file then
+    file:write(content .. "\n")
+    file:close()
+  else
+    vim.notify("[agent-session] Failed to write pipe context file: " .. tostring(err), vim.log.levels.ERROR)
+  end
+
+  return filepath
 end
 
 ---Delete/kill a session

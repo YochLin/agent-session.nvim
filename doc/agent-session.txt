@@ -59,8 +59,8 @@ Default options: >lua
 ==============================================================================
 4. COMMANDS                                           *agent-session-commands*
 
-:AgentSession [toggle|new|list|delete]
-    Main command to manage agent sessions.
+:AgentSession [toggle|new|list|delete|rename|prompt|send]
+    Main command router to manage agent sessions.
 
 :AgentSessionToggle
     Toggle the active agent session window.
@@ -68,8 +68,41 @@ Default options: >lua
 :AgentSessionNew [name] [agent]
     Create and launch a new agent session.
 
+:AgentSessionSelectAgent
+    Open interactive picker to select agent CLI and launch.
+
 :AgentSessionList
     Show session selector picker.
+
+:AgentSessionSidebar / :AgentSessionTree
+    Toggle the left sidebar session explorer.
+
+:AgentSessionPrompt [target] [prompt]
+    Send a prompt/command to a specific session (interactive picker if omitted).
+
+:AgentSessionSendCommand [target] [prompt]
+    Alias for `:AgentSessionPrompt`.
+
+:AgentSessionPipe [source] [target] [instruction]
+    Pipe output from one session into another session with optional instruction.
+
+:AgentSessionRename [name] [target]
+    Rename current session or specified session.
+
+:AgentSessionDelete [target]
+    Terminate and remove session.
+
+:AgentSessionSendLine
+    Send `@file:line` (or `@file:start-end`) to the active session.
+
+:AgentSessionSendLineTo [target]
+    Send `@file:line` (or `@file:start-end`) directly to a chosen target session.
+
+:AgentSessionSendFile
+    Send `@file` to the active session.
+
+:AgentSessionSendFileTo [target]
+    Send `@file` directly to a chosen target session.
 
 ==============================================================================
 5. LUA API                                                 *agent-session-api*
@@ -86,11 +119,26 @@ require("agent-session").toggle()
 require("agent-session").list_sessions()
     Open session selector via `vim.ui.select`.
 
+require("agent-session").prompt_session(target, text, opts)
+    Send prompt / command to target session (or prompt interactively).
+
+require("agent-session").pipe_session(source, target, instruction, opts)
+    Pipe output from source session into target session.
+
 require("agent-session").send(text)
     Send text / prompt into current active session.
 
-require("agent-session").delete_session(id)
+require("agent-session").rename_session(new_name, target)
+    Rename session.
+
+require("agent-session").delete_session(target)
     Close and delete an agent session.
+
+require("agent-session").send_line_ref_to(target, line1, line2)
+    Send line/selection reference to a chosen target session.
+
+require("agent-session").send_file_ref_to(target)
+    Send file reference to a chosen target session.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
