@@ -11,6 +11,8 @@ local M = {}
 ---@field created_at number Timestamp
 ---@field status "running"|"idle"|"stopped" Session status
 ---@field _timer userdata|nil Libuv timer for idle debouncing
+---@field _saved_view table|nil Saved window view from winsaveview()
+---@field _saved_mode "t"|"n"|nil Last active mode when unfocused ("t" for terminal, "n" for normal)
 
 ---@type table<string, Session>
 M._active_sessions = {}
@@ -34,6 +36,18 @@ end
 ---@return Session|nil
 function M.get(id)
   return M._active_sessions[id]
+end
+
+---Get a session by buffer number
+---@param bufnr number
+---@return Session|nil
+function M.get_by_bufnr(bufnr)
+  for _, sess in pairs(M._active_sessions) do
+    if sess.bufnr == bufnr then
+      return sess
+    end
+  end
+  return nil
 end
 
 ---Get the currently focused session
@@ -156,10 +170,37 @@ function M.create(name, agent_name)
     created_at = os.time(),
     status = "running",
     _timer = timer,
+    _saved_view = nil,
+    _saved_mode = "t",
   }
 
   M._active_sessions[id] = session
   M._current_session_id = id
+
+  -- Track mode and view changes on session buffer
+  vim.api.nvim_create_autocmd("TermEnter", {
+    buffer = bufnr,
+    callback = function()
+      session._saved_mode = "t"
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("TermLeave", {
+    buffer = bufnr,
+    callback = function()
+      session._saved_mode = "n"
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("BufLeave", {
+    buffer = bufnr,
+    callback = function()
+      local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+      if ok_ui and ui_mod.save_session_view then
+        ui_mod.save_session_view(session)
+      end
+    end,
+  })
 
   -- Build termopen options
   local term_opts = {

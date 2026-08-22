@@ -115,25 +115,101 @@ function M.refresh_title(session)
   end
 end
 
----Open a session in window
+---Save the window view and mode of the session currently displayed in M._current_win
+function M.save_current_view()
+  if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+    return
+  end
+
+  local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+  local cur_sess = session_mod.get_by_bufnr(cur_buf)
+  if cur_sess then
+    pcall(function()
+      cur_sess._saved_view = vim.api.nvim_win_call(M._current_win, vim.fn.winsaveview)
+    end)
+    if vim.api.nvim_get_current_win() == M._current_win then
+      local mode = vim.fn.mode()
+      cur_sess._saved_mode = (mode == "t") and "t" or "n"
+    end
+  end
+end
+
+---Save view for a specific session if it is currently displayed
 ---@param session Session
-function M.open(session)
-  if not session or not vim.api.nvim_buf_is_valid(session.bufnr) then
-    vim.notify("[agent-session] Invalid session buffer", vim.log.levels.ERROR)
+function M.save_session_view(session)
+  if not session or not session.bufnr or not vim.api.nvim_buf_is_valid(session.bufnr) then
+    return
+  end
+  if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
+    local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+    if cur_buf == session.bufnr then
+      pcall(function()
+        session._saved_view = vim.api.nvim_win_call(M._current_win, vim.fn.winsaveview)
+      end)
+      if vim.api.nvim_get_current_win() == M._current_win then
+        local mode = vim.fn.mode()
+        session._saved_mode = (mode == "t") and "t" or "n"
+      end
+    end
+  end
+end
+
+---Restore saved view and mode for a session in M._current_win
+---@param session Session
+---@param focus_input? boolean Force terminal insert mode
+local function restore_session_view_and_mode(session, focus_input)
+  if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
     return
   end
 
   local opts = config.get()
   local ui_opts = opts.ui or {}
+  local restore_enabled = ui_opts.restore_view ~= false
 
-  -- If window already exists, bring it to focus
+  vim.api.nvim_set_current_win(M._current_win)
+
+  if focus_input then
+    vim.cmd("startinsert")
+    return
+  end
+
+  if restore_enabled and session._saved_view then
+    pcall(function()
+      vim.api.nvim_win_call(M._current_win, function()
+        vim.fn.winrestview(session._saved_view)
+      end)
+    end)
+  end
+
+  if restore_enabled and session._saved_mode == "n" then
+    vim.cmd("stopinsert")
+  else
+    vim.cmd("startinsert")
+  end
+end
+
+---Open a session in window
+---@param session Session
+---@param open_opts? { focus_input?: boolean }
+function M.open(session, open_opts)
+  if not session or not vim.api.nvim_buf_is_valid(session.bufnr) then
+    vim.notify("[agent-session] Invalid session buffer", vim.log.levels.ERROR)
+    return
+  end
+
+  open_opts = open_opts or {}
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+
+  -- If window already exists, bring it to focus and switch buffer
   if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
+    M.save_current_view()
     vim.api.nvim_set_current_win(M._current_win)
     vim.api.nvim_win_set_buf(M._current_win, session.bufnr)
     apply_win_options(M._current_win)
     session_mod.set_current(session.id)
     M.refresh_title(session)
-    vim.cmd("startinsert")
+    restore_session_view_and_mode(session, open_opts.focus_input)
     return
   end
 
@@ -171,13 +247,14 @@ function M.open(session)
     once = true,
     callback = function()
       if M._current_win == cur_win then
+        M.save_current_view()
         M._current_win = nil
       end
     end,
   })
 
   session_mod.set_current(session.id)
-  vim.cmd("startinsert")
+  restore_session_view_and_mode(session, open_opts.focus_input)
 
   -- Map q to hide window in normal mode
   vim.keymap.set("n", "q", function()
@@ -197,6 +274,7 @@ end
 ---Close current UI window (without killing the session)
 function M.close_window()
   if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
+    M.save_current_view()
     vim.api.nvim_win_close(M._current_win, true)
     M._current_win = nil
   end
