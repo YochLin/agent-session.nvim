@@ -94,8 +94,22 @@ end
 ---Refresh title and winbar when status updates
 ---@param session? Session
 function M.refresh_title(session)
-  session = session or session_mod.get_current()
-  if not session or not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+  if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+    return
+  end
+
+  local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+  local win_session = session_mod.get_by_bufnr(cur_buf)
+
+  if session then
+    if not win_session or win_session.id ~= session.id then
+      return
+    end
+  else
+    session = win_session or session_mod.get_current()
+  end
+
+  if not session then
     return
   end
 
@@ -309,22 +323,60 @@ function M.select_session(on_select, opts_or_prompt)
   local prompt = type(opts_or_prompt) == "string" and opts_or_prompt
     or (type(opts_or_prompt) == "table" and opts_or_prompt.prompt)
     or "Select Agent Session:"
+
+  session_mod.sync_all()
   local all = session_mod.get_all()
+  local cur_sess = session_mod.get_current()
   local opts = config.get()
   local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+
+  local running_sessions = {}
+  local idle_sessions = {}
+  local stopped_sessions = {}
+
+  for _, s in pairs(all) do
+    if s.status == "running" then
+      table.insert(running_sessions, s)
+    elseif s.status == "idle" then
+      table.insert(idle_sessions, s)
+    else
+      table.insert(stopped_sessions, s)
+    end
+  end
+
+  local function sort_by_name(a, b)
+    return a.name < b.name
+  end
+  table.sort(running_sessions, sort_by_name)
+  table.sort(idle_sessions, sort_by_name)
+  table.sort(stopped_sessions, sort_by_name)
+
+  local sorted_sessions = {}
+  for _, s in ipairs(running_sessions) do
+    table.insert(sorted_sessions, s)
+  end
+  for _, s in ipairs(idle_sessions) do
+    table.insert(sorted_sessions, s)
+  end
+  for _, s in ipairs(stopped_sessions) do
+    table.insert(sorted_sessions, s)
+  end
+
+  if #sorted_sessions == 0 then
+    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.INFO)
+    return
+  end
+
   local items = {}
   local session_lookup = {}
 
-  for id, sess in pairs(all) do
+  for _, sess in ipairs(sorted_sessions) do
     local icon = icons[sess.status] or "•"
-    local label = string.format("[%s %s] %s (%s) - %s", icon, sess.status, sess.name, sess.agent, id)
+    local is_current = cur_sess and cur_sess.id == sess.id
+    local prefix = is_current and "➜ " or "  "
+    local label = string.format("%s[%s %s] %s (%s) - %s", prefix, icon, sess.status, sess.name, sess.agent, sess.id)
     table.insert(items, label)
     session_lookup[label] = sess
-  end
-
-  if #items == 0 then
-    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.INFO)
-    return
   end
 
   vim.ui.select(items, {

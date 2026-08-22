@@ -443,6 +443,7 @@ function M.status()
   if not cur then
     return ""
   end
+  session.sync_status(cur)
   local opts = config.get()
   local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
   local icon = icons[cur.status] or ""
