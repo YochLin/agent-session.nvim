@@ -39,11 +39,26 @@ require("lazy").setup({
       })
     end,
     keys = {
-      { "<leader>as", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session" },
+      { "<leader>at", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session Window" },
       { "<leader>ae", "<cmd>AgentSessionSidebar<cr>", desc = "Toggle Agent Explorer (Sidebar)" },
       { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session (Interactive)" },
       { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },
-      { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Agent Sessions" },
+      { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Active Sessions" },
+      { "<leader>ap", "<cmd>AgentSessionPrompt<cr>", desc = "Prompt / Command Target Session" },
+      { "<leader>ar", "<cmd>AgentSessionRename<cr>", desc = "Rename Session" },
+      {
+        "<leader>as",
+        "<cmd>AgentSessionSendLine<cr>",
+        mode = { "n", "v" },
+        desc = "Send Line/Selection Ref to Session",
+      },
+      { "<leader>ab", "<cmd>AgentSessionSendFile<cr>", desc = "Send File Ref to Session" },
+      {
+        "<leader>aP",
+        "<cmd>AgentSessionSendLineTo<cr>",
+        mode = { "n", "v" },
+        desc = "Send Selection Ref to Target Session",
+      },
     },
   },
 }, {

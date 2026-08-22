@@ -74,38 +74,76 @@ function M.send(text)
   end
 end
 
----@return Session|nil, string|nil path Current session and current buffer's relative path, or nil + notifies on failure
-local function current_session_and_path()
-  local cur = session.get_current()
-  if not cur then
-    vim.notify("[agent-session] No active session to send to", vim.log.levels.WARN)
-    return nil
+---Send prompt / command text to a specific session (by name or ID) or choose via interactive picker
+---@param target? string Session name or ID (or nil to pick interactively)
+---@param text? string Prompt text to send (or nil to prompt via vim.ui.input)
+---@param opts? { open?: boolean } Whether to open/focus the target session window
+function M.prompt_session(target, text, opts)
+  opts = opts or {}
+  local all = session.get_all()
+  if vim.tbl_isempty(all) then
+    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.WARN)
+    return
   end
 
+  local function send_to_session(sess, prompt_text)
+    if not prompt_text or vim.trim(prompt_text) == "" then
+      vim.ui.input({
+        prompt = string.format("Prompt for '%s' (%s): ", sess.name, sess.agent),
+      }, function(input)
+        if input and vim.trim(input) ~= "" then
+          session.send_text(sess.id, input, true)
+          vim.notify(
+            string.format("[agent-session] Sent prompt to '%s' (%s)", sess.name, sess.agent),
+            vim.log.levels.INFO
+          )
+          if opts.open then
+            ui.open(sess, { focus_input = true })
+          end
+        end
+      end)
+    else
+      session.send_text(sess.id, prompt_text, true)
+      vim.notify(string.format("[agent-session] Sent prompt to '%s' (%s)", sess.name, sess.agent), vim.log.levels.INFO)
+      if opts.open then
+        ui.open(sess, { focus_input = true })
+      end
+    end
+  end
+
+  if target and vim.trim(target) ~= "" then
+    local sess = session.find(vim.trim(target))
+    if not sess then
+      vim.notify("[agent-session] Session not found: " .. target, vim.log.levels.ERROR)
+      return
+    end
+    send_to_session(sess, text)
+  else
+    ui.select_session(function(sess)
+      send_to_session(sess, text)
+    end, "Select Target Session to Prompt:")
+  end
+end
+
+---Alias for prompt_session
+M.send_to = M.prompt_session
+
+---@return string|nil path Current buffer's relative path, or nil + notifies on failure
+local function get_current_buffer_path()
   local path = vim.fn.expand("%:.")
   if path == "" then
     vim.notify("[agent-session] Current buffer has no file path", vim.log.levels.WARN)
     return nil
   end
-
-  return cur, path
+  return path
 end
 
----Send a `@file:line` (or `@file:start-end` for a visual range) reference for the
----current buffer to the active session's input, without submitting it, so the
----user can add a prompt before pressing enter.
----@param line1? integer Start line (defaults to current line, or the live visual selection)
----@param line2? integer End line (defaults to line1)
-function M.send_line_ref(line1, line2)
-  local cur, path = current_session_and_path()
-  if not cur then
-    return
-  end
-
+---Get visual selection or cursor line range
+---@param line1? integer
+---@param line2? integer
+---@return integer, integer
+local function resolve_line_range(line1, line2)
   if not line1 then
-    -- opts.line1/line2 from a bare `<Cmd>` invocation always default to the cursor
-    -- line, even mid-visual-selection (marks '< / '> aren't updated until the
-    -- selection ends) — so read the live selection directly via mode()/line("v").
     local mode = vim.fn.mode()
     if mode == "v" or mode == "V" or mode == "\22" then
       line1, line2 = vim.fn.line("v"), vim.fn.line(".")
@@ -117,19 +155,73 @@ function M.send_line_ref(line1, line2)
       line1 = vim.fn.line(".")
     end
   end
-  line2 = line2 or line1
+  return line1, line2 or line1
+end
 
+---Send a `@file:line` (or `@file:start-end` for a visual range) reference to the active session
+---@param line1? integer Start line (defaults to current line, or the live visual selection)
+---@param line2? integer End line (defaults to line1)
+function M.send_line_ref(line1, line2)
+  local cur = session.get_current()
+  if not cur then
+    vim.notify("[agent-session] No active session to send to", vim.log.levels.WARN)
+    return
+  end
+
+  local path = get_current_buffer_path()
+  if not path then
+    return
+  end
+
+  line1, line2 = resolve_line_range(line1, line2)
   local ref = line1 == line2 and string.format("@%s:%d", path, line1) or string.format("@%s:%d-%d", path, line1, line2)
 
   session.send_text(cur.id, ref .. " ", false)
   ui.open(cur, { focus_input = true })
 end
 
----Send a `@file` reference for the whole current buffer to the active session's
----input, without submitting it, so the user can add a prompt before pressing enter.
+---Send a `@file:line` (or `@file:start-end` for a visual range) reference to a chosen target session
+---@param target? string Session name or ID (or nil to pick interactively)
+---@param line1? integer Start line
+---@param line2? integer End line
+function M.send_line_ref_to(target, line1, line2)
+  local path = get_current_buffer_path()
+  if not path then
+    return
+  end
+
+  line1, line2 = resolve_line_range(line1, line2)
+  local ref = line1 == line2 and string.format("@%s:%d", path, line1) or string.format("@%s:%d-%d", path, line1, line2)
+
+  local function send_ref_to_session(sess)
+    session.send_text(sess.id, ref .. " ", false)
+    ui.open(sess, { focus_input = true })
+  end
+
+  if target and vim.trim(target) ~= "" then
+    local sess = session.find(vim.trim(target))
+    if not sess then
+      vim.notify("[agent-session] Session not found: " .. target, vim.log.levels.ERROR)
+      return
+    end
+    send_ref_to_session(sess)
+  else
+    ui.select_session(function(sess)
+      send_ref_to_session(sess)
+    end, "Select Target Session for Line Reference:")
+  end
+end
+
+---Send a `@file` reference for the whole current buffer to the active session's input
 function M.send_file_ref()
-  local cur, path = current_session_and_path()
+  local cur = session.get_current()
   if not cur then
+    vim.notify("[agent-session] No active session to send to", vim.log.levels.WARN)
+    return
+  end
+
+  local path = get_current_buffer_path()
+  if not path then
     return
   end
 
@@ -137,40 +229,78 @@ function M.send_file_ref()
   ui.open(cur, { focus_input = true })
 end
 
+---Send a `@file` reference for the whole current buffer to a chosen target session
+---@param target? string Session name or ID (or nil to pick interactively)
+function M.send_file_ref_to(target)
+  local path = get_current_buffer_path()
+  if not path then
+    return
+  end
+
+  local function send_file_to_session(sess)
+    session.send_text(sess.id, "@" .. path .. " ", false)
+    ui.open(sess, { focus_input = true })
+  end
+
+  if target and vim.trim(target) ~= "" then
+    local sess = session.find(vim.trim(target))
+    if not sess then
+      vim.notify("[agent-session] Session not found: " .. target, vim.log.levels.ERROR)
+      return
+    end
+    send_file_to_session(sess)
+  else
+    ui.select_session(function(sess)
+      send_file_to_session(sess)
+    end, "Select Target Session for File Reference:")
+  end
+end
+
 ---Rename the current or specified session
 ---@param new_name? string
----@param id? string
-function M.rename_session(new_name, id)
-  id = id or (session.get_current() and session.get_current().id)
-  if not id then
-    vim.notify("[agent-session] No session selected to rename", vim.log.levels.WARN)
-    return
-  end
+---@param target? string Session name or ID (defaults to current active session)
+function M.rename_session(new_name, target)
+  local sess = (target and session.find(target)) or session.get_current()
 
-  if new_name and new_name ~= "" then
-    session.rename(id, new_name)
-    return
-  end
-
-  local cur = session.get(id)
-  vim.ui.input({ prompt = "Rename session: ", default = cur and cur.name or "" }, function(input)
-    if input and vim.trim(input) ~= "" then
-      session.rename(id, input)
+  local function do_rename(s, name)
+    if name and vim.trim(name) ~= "" then
+      session.rename(s.id, name)
+    else
+      vim.ui.input({ prompt = "Rename session '" .. s.name .. "': ", default = s.name }, function(input)
+        if input and vim.trim(input) ~= "" then
+          session.rename(s.id, input)
+        end
+      end)
     end
-  end)
+  end
+
+  if sess then
+    do_rename(sess, new_name)
+  else
+    ui.select_session(function(selected)
+      do_rename(selected, new_name)
+    end, "Select Session to Rename:")
+  end
 end
 
 ---Delete the current or specified session
----@param id? string
-function M.delete_session(id)
-  id = id or (session.get_current() and session.get_current().id)
-  if not id then
-    vim.notify("[agent-session] No session selected to delete", vim.log.levels.WARN)
-    return
+---@param target? string Session name or ID (defaults to current active session)
+function M.delete_session(target)
+  local sess = (target and session.find(target)) or session.get_current()
+
+  local function do_delete(s)
+    ui.close_window()
+    session.delete(s.id)
+    vim.notify(string.format("[agent-session] Deleted session '%s' (%s)", s.name, s.id), vim.log.levels.INFO)
   end
-  ui.close_window()
-  session.delete(id)
-  vim.notify("[agent-session] Deleted session " .. id, vim.log.levels.INFO)
+
+  if sess then
+    do_delete(sess)
+  else
+    ui.select_session(function(selected)
+      do_delete(selected)
+    end, "Select Session to Delete:")
+  end
 end
 
 ---Get formatted status string for statusline / lualine

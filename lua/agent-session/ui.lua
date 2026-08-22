@@ -304,7 +304,11 @@ end
 
 ---Select and open a session from a picker
 ---@param on_select? fun(session: Session)
-function M.select_session(on_select)
+---@param opts_or_prompt? string|{ prompt?: string }
+function M.select_session(on_select, opts_or_prompt)
+  local prompt = type(opts_or_prompt) == "string" and opts_or_prompt
+    or (type(opts_or_prompt) == "table" and opts_or_prompt.prompt)
+    or "Select Agent Session:"
   local all = session_mod.get_all()
   local opts = config.get()
   local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
@@ -324,7 +328,7 @@ function M.select_session(on_select)
   end
 
   vim.ui.select(items, {
-    prompt = "Select Agent Session:",
+    prompt = prompt,
   }, function(choice)
     if choice and session_lookup[choice] then
       local selected = session_lookup[choice]

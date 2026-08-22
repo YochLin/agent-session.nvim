@@ -5,7 +5,23 @@ vim.g.loaded_agent_session = 1
 
 local agent_session = require("agent-session")
 
--- :AgentSession (toggle)
+local function complete_session_targets(lead)
+  local session_mod = require("agent-session.session")
+  local all = session_mod.get_all()
+  local items = {}
+  for id, sess in pairs(all) do
+    table.insert(items, sess.name)
+    table.insert(items, id)
+  end
+  if not lead or lead == "" then
+    return items
+  end
+  return vim.tbl_filter(function(item)
+    return vim.startswith(item, lead)
+  end, items)
+end
+
+-- :AgentSession router
 vim.api.nvim_create_user_command("AgentSession", function(opts)
   local args = vim.split(opts.args, "%s+", { trimempty = true })
   local subcmd = args[1]
@@ -29,8 +45,13 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
   elseif subcmd == "delete" then
     agent_session.delete_session(args[2])
   elseif subcmd == "rename" then
-    local new_name = table.concat(args, " ", 2)
-    agent_session.rename_session(new_name ~= "" and new_name or nil)
+    local new_name = args[2]
+    local target = args[3]
+    agent_session.rename_session(new_name, target)
+  elseif subcmd == "prompt" or subcmd == "send" or subcmd == "send-to" then
+    local target = args[2]
+    local text = #args > 2 and table.concat(args, " ", 3) or nil
+    agent_session.prompt_session(target, text)
   else
     vim.notify("[agent-session] Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
   end
@@ -38,17 +59,28 @@ end, {
   nargs = "*",
   complete = function(_, line)
     local l = vim.split(line, "%s+", { trimempty = true })
-    local subcommands = { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename" }
-    if #l <= 2 then
+    local subcommands =
+      { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename", "prompt", "send" }
+    local has_trailing_space = vim.endswith(line, " ")
+
+    if #l == 1 and has_trailing_space then
+      return subcommands
+    elseif #l <= 2 and not has_trailing_space then
       return vim.tbl_filter(function(item)
         return vim.startswith(item, l[2] or "")
       end, subcommands)
-    elseif #l == 3 and (l[2] == "new" or l[2] == "agent") then
-      local config = require("agent-session.config").get()
-      local agents = vim.tbl_keys(config.agents or {})
-      return vim.tbl_filter(function(item)
-        return vim.startswith(item, l[3] or "")
-      end, agents)
+    elseif (#l == 2 and has_trailing_space) or (#l == 3 and not has_trailing_space) then
+      local sub = l[2]
+      local lead = has_trailing_space and "" or (l[3] or "")
+      if sub == "new" or sub == "agent" then
+        local config = require("agent-session.config").get()
+        local agents = vim.tbl_keys(config.agents or {})
+        return vim.tbl_filter(function(item)
+          return vim.startswith(item, lead)
+        end, agents)
+      elseif sub == "delete" or sub == "prompt" or sub == "send" or sub == "send-to" then
+        return complete_session_targets(lead)
+      end
     end
     return {}
   end,
@@ -93,10 +125,81 @@ vim.api.nvim_create_user_command("AgentSessionTree", function()
   agent_session.toggle_sidebar()
 end, { desc = "Toggle left sidebar session explorer" })
 
+-- :AgentSessionPrompt [target] [prompt text...]
+vim.api.nvim_create_user_command("AgentSessionPrompt", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  local target = args[1]
+  local text = #args > 1 and table.concat(args, " ", 2) or nil
+  agent_session.prompt_session(target, text)
+end, {
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    local has_trailing_space = vim.endswith(line, " ")
+    if #l == 1 and has_trailing_space then
+      return complete_session_targets("")
+    elseif #l <= 2 and not has_trailing_space then
+      return complete_session_targets(l[2] or "")
+    end
+    return {}
+  end,
+  desc = "Send a prompt/command to a specific session (interactive picker if omitted)",
+})
+
+vim.api.nvim_create_user_command("AgentSessionSendCommand", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  local target = args[1]
+  local text = #args > 1 and table.concat(args, " ", 2) or nil
+  agent_session.prompt_session(target, text)
+end, {
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    local has_trailing_space = vim.endswith(line, " ")
+    if #l == 1 and has_trailing_space then
+      return complete_session_targets("")
+    elseif #l <= 2 and not has_trailing_space then
+      return complete_session_targets(l[2] or "")
+    end
+    return {}
+  end,
+  desc = "Send a command to a specific session (alias of AgentSessionPrompt)",
+})
+
+-- :AgentSessionRename [new_name] [target]
+vim.api.nvim_create_user_command("AgentSessionRename", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.rename_session(args[1], args[2])
+end, {
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    local has_trailing_space = vim.endswith(line, " ")
+    if #l == 2 and has_trailing_space then
+      return complete_session_targets("")
+    elseif #l == 3 and not has_trailing_space then
+      return complete_session_targets(l[3] or "")
+    end
+    return {}
+  end,
+  desc = "Rename current session or specified session",
+})
+
+-- :AgentSessionDelete [target]
+vim.api.nvim_create_user_command("AgentSessionDelete", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.delete_session(args[1])
+end, {
+  nargs = "?",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    return complete_session_targets(l[2] or "")
+  end,
+  desc = "Delete current session or specified session",
+})
+
 -- :AgentSessionSendLine (normal mode: current line, visual mode: selection range)
 vim.api.nvim_create_user_command("AgentSessionSendLine", function(opts)
-  -- opts.range is 0 when no explicit range (e.g. "2,4Cmd" or "'<,'>Cmd") was given,
-  -- letting send_line_ref() detect a live visual selection itself.
   if opts.range > 0 then
     agent_session.send_line_ref(opts.line1, opts.line2)
   else
@@ -104,7 +207,39 @@ vim.api.nvim_create_user_command("AgentSessionSendLine", function(opts)
   end
 end, { range = true, desc = "Send current line (or visual selection) reference to active session" })
 
+-- :AgentSessionSendLineTo [target] (normal mode: current line, visual mode: selection range)
+vim.api.nvim_create_user_command("AgentSessionSendLineTo", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  local target = args[1]
+  if opts.range > 0 then
+    agent_session.send_line_ref_to(target, opts.line1, opts.line2)
+  else
+    agent_session.send_line_ref_to(target)
+  end
+end, {
+  range = true,
+  nargs = "?",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    return complete_session_targets(l[2] or "")
+  end,
+  desc = "Send current line (or visual selection) reference to a chosen target session",
+})
+
 -- :AgentSessionSendFile (whole current buffer)
 vim.api.nvim_create_user_command("AgentSessionSendFile", function()
   agent_session.send_file_ref()
 end, { desc = "Send current file reference to active session" })
+
+-- :AgentSessionSendFileTo [target] (whole current buffer to target session)
+vim.api.nvim_create_user_command("AgentSessionSendFileTo", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.send_file_ref_to(args[1])
+end, {
+  nargs = "?",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    return complete_session_targets(l[2] or "")
+  end,
+  desc = "Send current file reference to a chosen target session",
+})

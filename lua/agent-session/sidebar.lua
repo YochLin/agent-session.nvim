@@ -120,9 +120,9 @@ function M.render()
   table.insert(lines, "")
   table.insert(lines, string.rep("─", 32))
   table.insert(lines, " <CR>: Open  n: New    d: Delete")
-  table.insert(lines, " r: Rename   e: Expand +/-: Hgt")
-  table.insert(lines, " >/<: Width  a: Agent  =: Reset")
-  table.insert(lines, " q: Close")
+  table.insert(lines, " r: Rename   p: Prompt e: Expand")
+  table.insert(lines, " +/-: Hgt    >/<: Width =: Reset")
+  table.insert(lines, " a: Agent    q: Close")
   for i = #lines - 5, #lines do
     table.insert(highlights, { i, 0, -1, "AgentSessionHelp" })
   end
@@ -254,6 +254,14 @@ local function setup_keymaps(bufnr)
           session_mod.rename(s.id, new_name)
         end
       end)
+    end
+  end, map_opts)
+
+  -- p: Prompt session under cursor
+  vim.keymap.set("n", "p", function()
+    local s = get_cursor_session()
+    if s then
+      require("agent-session").prompt_session(s.id)
     end
   end, map_opts)
 

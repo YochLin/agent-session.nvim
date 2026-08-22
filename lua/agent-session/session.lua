@@ -38,6 +38,44 @@ function M.get(id)
   return M._active_sessions[id]
 end
 
+---Find a session by ID, exact name, or case-insensitive name
+---@param name_or_id string
+---@return Session|nil
+function M.find(name_or_id)
+  if not name_or_id or name_or_id == "" then
+    return nil
+  end
+
+  -- 1. Exact ID match
+  if M._active_sessions[name_or_id] then
+    return M._active_sessions[name_or_id]
+  end
+
+  -- 2. Exact Name match
+  for _, sess in pairs(M._active_sessions) do
+    if sess.name == name_or_id then
+      return sess
+    end
+  end
+
+  -- 3. Case-insensitive Name match
+  local lower = string.lower(name_or_id)
+  for _, sess in pairs(M._active_sessions) do
+    if string.lower(sess.name) == lower then
+      return sess
+    end
+  end
+
+  -- 4. Prefix match on ID or Name
+  for _, sess in pairs(M._active_sessions) do
+    if vim.startswith(sess.id, name_or_id) or vim.startswith(string.lower(sess.name), lower) then
+      return sess
+    end
+  end
+
+  return nil
+end
+
 ---Get a session by buffer number
 ---@param bufnr number
 ---@return Session|nil

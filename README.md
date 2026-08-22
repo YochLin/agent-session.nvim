@@ -7,7 +7,9 @@ A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g.
 ## ✨ Features
 
 - ⚡ **Multi-Session Management**: Run and track multiple background AI agent processes.
-- 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, and manage sessions.
+- 🎯 **Targeted Prompting & Session Dispatch**: Send prompts or commands to specific agents by friendly name or interactive picker without switching contexts.
+- 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
+- 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
 - 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
 - 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
 - 🧩 **Lazy.nvim & LazyVim & AstroNvim Ready**: Zero-boilerplate setup and keymapping configuration.
@@ -31,8 +33,14 @@ return {
     "AgentSessionNew",
     "AgentSessionList",
     "AgentSessionSelectAgent",
+    "AgentSessionPrompt",
+    "AgentSessionSendCommand",
+    "AgentSessionRename",
+    "AgentSessionDelete",
     "AgentSessionSendLine",
+    "AgentSessionSendLineTo",
     "AgentSessionSendFile",
+    "AgentSessionSendFileTo",
   },
   keys = {
     { "<leader>at", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session Window" },
@@ -40,8 +48,11 @@ return {
     { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session (Interactive)" },
     { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },
     { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Active Sessions" },
+    { "<leader>ap", "<cmd>AgentSessionPrompt<cr>", desc = "Prompt / Command Target Session" },
+    { "<leader>ar", "<cmd>AgentSessionRename<cr>", desc = "Rename Session" },
     { "<leader>as", "<cmd>AgentSessionSendLine<cr>", mode = { "n", "v" }, desc = "Send Line/Selection Ref to Session" },
     { "<leader>ab", "<cmd>AgentSessionSendFile<cr>", desc = "Send File Ref to Session" },
+    { "<leader>aP", "<cmd>AgentSessionSendLineTo<cr>", mode = { "n", "v" }, desc = "Send Selection Ref to Target Session" },
   },
   opts = {
     default_agent = "agy", -- "claude" | "agy" | "codex" | "gemini" | "sh"
@@ -136,10 +147,15 @@ require("agent-session").setup({
 | `:AgentSessionNew [agent\|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
 | `:AgentSessionSelectAgent` | Open interactive picker to choose which agent to launch |
 | `:AgentSessionList` | Open interactive session picker to switch active session |
+| `:AgentSessionPrompt [target] [prompt]` | Send prompt/command to a specific session (interactive picker if omitted) |
+| `:AgentSessionSendCommand [target] [prompt]` | Alias for `:AgentSessionPrompt` |
+| `:AgentSessionRename [name] [target]` | Rename current session or specified session |
+| `:AgentSessionDelete [target]` | Terminate and remove current or specified session |
+| `:AgentSessionSendLine` | Send `@file:line` (normal mode) or `@file:start-end` (visual mode) to active session |
+| `:AgentSessionSendLineTo [target]` | Send line/selection reference directly to a chosen target session |
+| `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |
+| `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
 | `:AgentSession status [idle\|running]` | Check or set current session status |
-| `:AgentSessionDelete [id]` | Terminate and remove session |
-| `:AgentSessionSendLine` | Send `@file:line` (normal mode) or `@file:start-end` (visual mode) to the active session's input |
-| `:AgentSessionSendFile` | Send `@file` (whole current buffer) to the active session's input |
 
 ---
 
