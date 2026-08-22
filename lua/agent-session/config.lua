@@ -16,6 +16,7 @@
 ---@field border? string Border style ("rounded", "single", "double", "solid", "shadow", "none")
 ---@field title? string Title for session window
 ---@field position? "float"|"split"|"vsplit" Window position
+---@field restore_view? boolean Preserve scroll position and cursor line when switching sessions (default: true)
 
 local M = {}
 
@@ -56,6 +57,7 @@ M.defaults = {
     height = 0.8,
     border = "rounded",
     title = " Agent Session ",
+    restore_view = true, -- Preserve scroll position and normal/terminal mode across session switches
   },
   sidebar = {
     position = "auto", -- "auto" (bottom-left under neo-tree if open, else left), "left", "bottom-left"

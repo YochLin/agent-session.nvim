@@ -28,13 +28,13 @@ function M.new_session(name, agent_name)
   if not name and not agent_name then
     ui.select_agent(function(selected_agent)
       local sess = session.create(nil, selected_agent)
-      ui.open(sess)
+      ui.open(sess, { focus_input = true })
     end)
     return nil
   end
 
   local sess = session.create(name, agent_name)
-  ui.open(sess)
+  ui.open(sess, { focus_input = true })
   return sess
 end
 
@@ -46,7 +46,7 @@ function M.select_agent(on_select)
       on_select(selected_agent)
     else
       local sess = session.create(nil, selected_agent)
-      ui.open(sess)
+      ui.open(sess, { focus_input = true })
     end
   end)
 end
@@ -122,7 +122,7 @@ function M.send_line_ref(line1, line2)
   local ref = line1 == line2 and string.format("@%s:%d", path, line1) or string.format("@%s:%d-%d", path, line1, line2)
 
   session.send_text(cur.id, ref .. " ", false)
-  ui.open(cur)
+  ui.open(cur, { focus_input = true })
 end
 
 ---Send a `@file` reference for the whole current buffer to the active session's
@@ -134,7 +134,7 @@ function M.send_file_ref()
   end
 
   session.send_text(cur.id, "@" .. path .. " ", false)
-  ui.open(cur)
+  ui.open(cur, { focus_input = true })
 end
 
 ---Rename the current or specified session
