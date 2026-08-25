@@ -53,6 +53,9 @@ Default options: >lua
         border = "rounded",
         title = " Agent Session ",
       },
+      idle_timeout = 800,
+      notify_on_idle = true,
+      notify_on_exit = true,
     })
 <
 

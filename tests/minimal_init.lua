@@ -9,8 +9,9 @@ for _, name in ipairs({ "config", "data", "state", "cache" }) do
 end
 
 -- Bootstrap lazy.nvim
+local uv = vim.uv or vim.loop
 local lazypath = root .. "/plugins/lazy.nvim"
-if not vim.loop.fs_stat(lazypath) then
+if not uv.fs_stat(lazypath) then
   vim.fn.system({
     "git",
     "clone",

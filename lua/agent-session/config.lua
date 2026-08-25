@@ -4,6 +4,14 @@
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
 ---@field hooks? table<string, fun(session: table)> Lifecycle hooks
+---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
+---@field notify_on_exit? boolean Notify when a background session exits (default: true)
+---@field notifications? AgentSessionNotificationConfig Notification settings
+
+---@class AgentSessionNotificationConfig
+---@field enabled? boolean Enable/disable all notifications (default: true)
+---@field on_idle? boolean Notify when a background session transitions to idle (default: true)
+---@field on_exit? boolean Notify when a background session exits (default: true)
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
@@ -65,6 +73,13 @@ M.defaults = {
     height = 0.35, -- percentage (0.35 = 35% height) or fixed lines (e.g. 12)
   },
   idle_timeout = 800, -- Milliseconds of silence before marking session as idle
+  notify_on_idle = true, -- Notify when a background session transitions to idle
+  notify_on_exit = true, -- Notify when a background session process exits
+  notifications = {
+    enabled = true,
+    on_idle = true,
+    on_exit = true,
+  },
   status_icons = {
     running = "⚡",
     idle = "🟢",
