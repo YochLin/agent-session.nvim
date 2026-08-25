@@ -11,6 +11,9 @@ A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g.
 - 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
 - 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
 - 🔔 **Background Task Notifications**: Receive automatic notifications (`vim.notify` / nvim-notify / Snacks) when unfocused background agent sessions complete tasks (idle) or exit.
+- 🔄 **In-Place Session Restart**: Instantly restart crashed or stopped agent processes in the same buffer/window with `:AgentSessionRestart` or `S` in the sidebar.
+- 📝 **Markdown Transcript Export**: Export full session conversations into clean Markdown documents with `:AgentSessionExport` or `E` in the sidebar.
+- 💾 **Project Session Persistence**: Save and restore active agent sessions per project directory (`:AgentSessionSave` / `:AgentSessionRestore` or auto save/restore on exit/startup).
 - 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
 - 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
 - 🧩 **Lazy.nvim & LazyVim & AstroNvim Ready**: Zero-boilerplate setup and keymapping configuration.
@@ -39,6 +42,10 @@ return {
     "AgentSessionPipe",
     "AgentSessionRename",
     "AgentSessionDelete",
+    "AgentSessionRestart",
+    "AgentSessionExport",
+    "AgentSessionSave",
+    "AgentSessionRestore",
     "AgentSessionSendLine",
     "AgentSessionSendLineTo",
     "AgentSessionSendFile",
@@ -53,6 +60,8 @@ return {
     { "<leader>ap", "<cmd>AgentSessionPrompt<cr>", desc = "Prompt / Command Target Session" },
     { "<leader>aP", "<cmd>AgentSessionPipe<cr>", mode = { "n", "v" }, desc = "Pipe Output to Target Session" },
     { "<leader>ar", "<cmd>AgentSessionRename<cr>", desc = "Rename Session" },
+    { "<leader>aR", "<cmd>AgentSessionRestart<cr>", desc = "Restart Session" },
+    { "<leader>aE", "<cmd>AgentSessionExport<cr>", desc = "Export Session Transcript" },
     { "<leader>as", "<cmd>AgentSessionSendLine<cr>", mode = { "n", "v" }, desc = "Send Line/Selection Ref to Session" },
     { "<leader>ab", "<cmd>AgentSessionSendFile<cr>", desc = "Send File Ref to Session" },
   },
@@ -140,6 +149,8 @@ require("agent-session").setup({
     on_idle = true,
     on_exit = true,
   },
+  auto_save_sessions = false, -- Automatically save active sessions for current project on exit
+  auto_restore_sessions = false, -- Automatically restore saved sessions for current project on startup
   status_icons = {
     running = "⚡",
     idle = "🟢",
@@ -168,6 +179,10 @@ require("agent-session").setup({
 | `:AgentSessionPipe [source] [target] [instruction]` | Pipe output from one session into another session with optional instruction |
 | `:AgentSessionRename [name] [target]` | Rename current session or specified session |
 | `:AgentSessionDelete [target]` | Terminate and remove current or specified session |
+| `:AgentSessionRestart [target]` | Restart current or specified session in-place |
+| `:AgentSessionExport [target] [file_path]` | Export session transcript to a Markdown file |
+| `:AgentSessionSave [cwd]` | Save active sessions for current project directory |
+| `:AgentSessionRestore [cwd]` | Restore saved sessions for current project directory |
 | `:AgentSessionSendLine` | Send `@file:line` (normal mode) or `@file:start-end` (visual mode) to active session |
 | `:AgentSessionSendLineTo [target]` | Send line/selection reference directly to a chosen target session |
 | `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |

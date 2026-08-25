@@ -122,9 +122,10 @@ function M.render()
   table.insert(lines, string.rep("─", 32))
   table.insert(lines, " <CR>: Open  n: New    d: Delete")
   table.insert(lines, " r: Rename   p: Prompt P: Pipe")
+  table.insert(lines, " S: Restart  E: Export a: Agent")
   table.insert(lines, " e: Expand   +/-: Hgt  >/<: Width")
-  table.insert(lines, " a: Agent    =: Reset  q: Close")
-  for i = #lines - 5, #lines do
+  table.insert(lines, " =: Reset    R: Sync   q: Close")
+  for i = #lines - 6, #lines do
     table.insert(highlights, { i, 0, -1, "AgentSessionHelp" })
   end
 
@@ -271,6 +272,29 @@ local function setup_keymaps(bufnr)
     local s = get_cursor_session()
     if s then
       require("agent-session").pipe_session(s.id)
+    end
+  end, map_opts)
+
+  -- S: Restart session under cursor
+  vim.keymap.set("n", "S", function()
+    local s = get_cursor_session()
+    if s then
+      vim.ui.select({ "Yes", "No" }, {
+        prompt = "Restart session " .. s.name .. " (" .. s.agent .. ")?",
+      }, function(choice)
+        if choice == "Yes" then
+          session_mod.restart(s.id)
+          M.render()
+        end
+      end)
+    end
+  end, map_opts)
+
+  -- E: Export session transcript
+  vim.keymap.set("n", "E", function()
+    local s = get_cursor_session()
+    if s then
+      require("agent-session").export_session(s.id)
     end
   end, map_opts)
 

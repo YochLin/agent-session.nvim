@@ -609,4 +609,396 @@ function M.delete(id)
   end
 end
 
+---Restart a session (in-place in the same session object / window)
+---@param session_or_id Session|string
+---@return Session|nil
+function M.restart(session_or_id)
+  local sess = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
+  if not sess then
+    vim.notify("[agent-session] Session not found to restart.", vim.log.levels.WARN)
+    return nil
+  end
+
+  local opts = config.get()
+  local agent_def = (opts.agents and opts.agents[sess.agent])
+  if not agent_def then
+    if vim.fn.executable(sess.agent) == 1 then
+      agent_def = { cmd = sess.agent, args = {}, env = {} }
+    else
+      agent_def = { cmd = vim.o.shell, args = {}, env = {} }
+    end
+  end
+
+  local cmd = agent_def.cmd
+  if type(cmd) == "table" then
+    cmd = vim.deepcopy(cmd)
+  else
+    cmd = { cmd }
+  end
+
+  if agent_def.args then
+    for _, arg in ipairs(agent_def.args) do
+      table.insert(cmd, arg)
+    end
+  end
+
+  -- Stop active job and timer
+  if sess._timer and not sess._timer:is_closing() then
+    sess._timer:stop()
+    sess._timer:close()
+  end
+
+  if sess.job_id > 0 and sess.status ~= "stopped" then
+    pcall(vim.fn.jobstop, sess.job_id)
+  end
+
+  local old_bufnr = sess.bufnr
+
+  -- Create fresh unlisted buffer
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.bo[bufnr].bufhidden = "hide"
+
+  local timer = uv.new_timer()
+  sess.bufnr = bufnr
+  sess.status = "running"
+  sess.exit_code = nil
+  sess._timer = timer
+  sess._is_initial = true
+
+  -- Track mode and view changes on session buffer
+  vim.api.nvim_create_autocmd("TermEnter", {
+    buffer = bufnr,
+    callback = function()
+      sess._saved_mode = "t"
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("TermLeave", {
+    buffer = bufnr,
+    callback = function()
+      sess._saved_mode = "n"
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("BufLeave", {
+    buffer = bufnr,
+    callback = function()
+      local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+      if ok_ui and ui_mod.save_session_view then
+        ui_mod.save_session_view(sess)
+      end
+    end,
+  })
+
+  local term_opts = {
+    cwd = vim.fn.getcwd(),
+    on_exit = function(_, exit_code, _)
+      if timer and not timer:is_closing() then
+        timer:stop()
+        timer:close()
+      end
+      sess.exit_code = exit_code
+      M.set_status(sess, "stopped")
+      if opts.hooks and opts.hooks.on_session_exit then
+        opts.hooks.on_session_exit(sess, exit_code)
+      end
+    end,
+  }
+  if agent_def.env and type(agent_def.env) == "table" and next(agent_def.env) ~= nil then
+    term_opts.env = agent_def.env
+  end
+
+  -- Monitor terminal output activity
+  vim.api.nvim_buf_attach(bufnr, false, {
+    on_lines = function()
+      if sess.status == "stopped" then
+        return
+      end
+      if sess.status ~= "running" then
+        M.set_status(sess, "running")
+      end
+      if timer and not timer:is_closing() then
+        timer:stop()
+        timer:start(
+          opts.idle_timeout or 800,
+          0,
+          vim.schedule_wrap(function()
+            if sess.status == "running" then
+              M.set_status(sess, "idle")
+            end
+          end)
+        )
+      end
+    end,
+    on_detach = function()
+      if timer and not timer:is_closing() then
+        timer:stop()
+        timer:close()
+      end
+    end,
+  })
+
+  -- Delete old buffer if valid
+  if old_bufnr and vim.api.nvim_buf_is_valid(old_bufnr) then
+    pcall(vim.api.nvim_buf_delete, old_bufnr, { force = true })
+  end
+
+  -- Spawn terminal in buffer
+  local job_id = vim.api.nvim_buf_call(bufnr, function()
+    local ok, res = pcall(vim.fn.termopen, cmd, term_opts)
+    if ok and type(res) == "number" and res > 0 then
+      return res
+    end
+    vim.notify("[agent-session] Failed to restart terminal: " .. tostring(res), vim.log.levels.ERROR)
+    return 0
+  end)
+
+  sess.job_id = job_id
+  if job_id == 0 then
+    sess.status = "stopped"
+  else
+    if timer and not timer:is_closing() then
+      timer:start(
+        opts.idle_timeout or 800,
+        0,
+        vim.schedule_wrap(function()
+          if sess.status == "running" then
+            M.set_status(sess, "idle")
+          end
+        end)
+      )
+    end
+  end
+  pcall(vim.api.nvim_buf_set_name, bufnr, "agent-session://" .. sess.name .. " (" .. sess.id .. ")")
+
+  -- Map q to hide window in normal mode
+  vim.keymap.set("n", "q", function()
+    local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+    if ok_ui and ui_mod.close_window then
+      ui_mod.close_window()
+    end
+  end, { buffer = bufnr, nowait = true, silent = true })
+
+  -- Map R to rename this session in normal mode
+  vim.keymap.set("n", "R", function()
+    vim.ui.input({ prompt = "Rename session: ", default = sess.name }, function(new_name)
+      if new_name and vim.trim(new_name) ~= "" then
+        M.rename(sess.id, new_name)
+      end
+    end)
+  end, { buffer = bufnr, nowait = true, silent = true })
+
+  -- If currently open in UI window, switch window to new bufnr
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  if ok_ui and ui_mod._current_win and vim.api.nvim_win_is_valid(ui_mod._current_win) then
+    local cur_sess = M.get_current()
+    if cur_sess and cur_sess.id == sess.id then
+      vim.api.nvim_win_set_buf(ui_mod._current_win, bufnr)
+      ui_mod.refresh_title(sess)
+    end
+  end
+
+  M.set_current(sess.id)
+  vim.notify(string.format("[agent-session] Restarted session '%s' (%s)", sess.name, sess.agent), vim.log.levels.INFO)
+  return sess
+end
+
+---Export a session's transcript to a markdown file
+---@param session_or_id Session|string
+---@param file_path? string File path (if nil, uses default exports dir)
+---@return string|nil Exported file path
+function M.export(session_or_id, file_path)
+  local sess = type(session_or_id) == "table" and session_or_id or M.find(session_or_id)
+  if not sess then
+    vim.notify("[agent-session] Session not found to export.", vim.log.levels.WARN)
+    return nil
+  end
+
+  local output = M.extract_output(sess, { full = true })
+  if not output or output == "" then
+    vim.notify(string.format("[agent-session] Session '%s' has no output to export.", sess.name), vim.log.levels.WARN)
+    return nil
+  end
+
+  local opts = config.get()
+  local exports_dir = (opts.session_dir or (vim.fn.stdpath("data") .. "/agent-sessions")) .. "/exports"
+  if vim.fn.isdirectory(exports_dir) == 0 then
+    vim.fn.mkdir(exports_dir, "p")
+  end
+
+  if not file_path or vim.trim(file_path) == "" then
+    local safe_name = sess.name:gsub("[^%w_%-]", "_")
+    local filename = string.format("%s_%s.md", safe_name, os.date("%Y%m%d_%H%M%S"))
+    file_path = exports_dir .. "/" .. filename
+  else
+    file_path = vim.fn.fnamemodify(file_path, ":p")
+    local parent = vim.fn.fnamemodify(file_path, ":h")
+    if vim.fn.isdirectory(parent) == 0 then
+      vim.fn.mkdir(parent, "p")
+    end
+  end
+
+  local header = string.format(
+    "# Agent Session Transcript: %s\n\n- **Agent**: `%s`\n- **Session ID**: `%s`\n- **Created At**: `%s`\n- **Exported At**: `%s`\n- **Status**: `%s`\n\n---\n\n```text\n",
+    sess.name,
+    sess.agent,
+    sess.id,
+    os.date("%Y-%m-%d %H:%M:%S", sess.created_at or os.time()),
+    os.date("%Y-%m-%d %H:%M:%S"),
+    sess.status
+  )
+  local footer = "\n```\n"
+
+  local file, err = io.open(file_path, "w")
+  if not file then
+    vim.notify("[agent-session] Failed to open export file: " .. tostring(err), vim.log.levels.ERROR)
+    return nil
+  end
+
+  file:write(header .. output .. footer)
+  file:close()
+
+  vim.notify(
+    string.format("[agent-session] Exported transcript of '%s' to %s", sess.name, vim.fn.fnamemodify(file_path, ":~:.")),
+    vim.log.levels.INFO
+  )
+  return file_path
+end
+
+---Get project storage file path
+---@param cwd? string
+---@return string
+local function get_project_file_path(cwd)
+  cwd = cwd or vim.fn.getcwd()
+  local opts = config.get()
+  local projects_dir = (opts.session_dir or (vim.fn.stdpath("data") .. "/agent-sessions")) .. "/projects"
+  if vim.fn.isdirectory(projects_dir) == 0 then
+    vim.fn.mkdir(projects_dir, "p")
+  end
+  local hash = vim.fn.sha256(cwd):sub(1, 16)
+  return projects_dir .. "/proj_" .. hash .. ".json"
+end
+
+---Save active sessions for current project / directory
+---@param cwd? string
+---@return boolean
+function M.save_project(cwd)
+  cwd = cwd or vim.fn.getcwd()
+  local all = M.get_all()
+  local count = vim.tbl_count(all)
+  if count == 0 then
+    return false
+  end
+
+  local sessions_data = {}
+  for _, s in pairs(all) do
+    table.insert(sessions_data, {
+      name = s.name,
+      agent = s.agent,
+    })
+  end
+
+  local cur = M.get_current()
+  local payload = {
+    project_dir = cwd,
+    saved_at = os.time(),
+    current_session = cur and cur.name or nil,
+    sessions = sessions_data,
+  }
+
+  local ok, encoded = pcall(vim.json.encode, payload)
+  if not ok or not encoded then
+    return false
+  end
+
+  local file_path = get_project_file_path(cwd)
+  local f, err = io.open(file_path, "w")
+  if f then
+    f:write(encoded)
+    f:close()
+    vim.notify(
+      string.format(
+        "[agent-session] Saved %d sessions for project: %s",
+        #sessions_data,
+        vim.fn.fnamemodify(cwd, ":~:.")
+      ),
+      vim.log.levels.INFO
+    )
+    return true
+  else
+    vim.notify("[agent-session] Failed to save project sessions: " .. tostring(err), vim.log.levels.ERROR)
+    return false
+  end
+end
+
+---Restore saved sessions for current project / directory
+---@param cwd? string
+---@return Session[]
+function M.restore_project(cwd)
+  cwd = cwd or vim.fn.getcwd()
+  local file_path = get_project_file_path(cwd)
+
+  if vim.fn.filereadable(file_path) == 0 then
+    vim.notify(
+      "[agent-session] No saved sessions found for project: " .. vim.fn.fnamemodify(cwd, ":~:."),
+      vim.log.levels.WARN
+    )
+    return {}
+  end
+
+  local f = io.open(file_path, "r")
+  if not f then
+    return {}
+  end
+  local content = f:read("*a")
+  f:close()
+
+  local ok, data = pcall(vim.json.decode, content)
+  if not ok or not data or not data.sessions then
+    vim.notify("[agent-session] Failed to parse saved session data.", vim.log.levels.ERROR)
+    return {}
+  end
+
+  local restored = {}
+  for _, item in ipairs(data.sessions) do
+    local existing = M.find(item.name)
+    if not existing then
+      local s = M.create(item.name, item.agent)
+      table.insert(restored, s)
+    else
+      table.insert(restored, existing)
+    end
+  end
+
+  if data.current_session then
+    local cur = M.find(data.current_session)
+    if cur then
+      M.set_current(cur.id)
+    end
+  end
+
+  vim.notify(
+    string.format("[agent-session] Restored %d sessions for project: %s", #restored, vim.fn.fnamemodify(cwd, ":~:.")),
+    vim.log.levels.INFO
+  )
+
+  local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+  if ok_sb and sidebar_mod.render then
+    sidebar_mod.render()
+  end
+
+  return restored
+end
+
+-- Auto-save project sessions on exit if configured
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group = vim.api.nvim_create_augroup("AgentSessionAutoSave", { clear = true }),
+  callback = function()
+    local opts = config.get()
+    if opts.auto_save_sessions then
+      M.save_project()
+    end
+  end,
+})
+
 return M

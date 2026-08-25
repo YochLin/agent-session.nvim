@@ -8,6 +8,11 @@ local M = {}
 ---@param opts? AgentSessionConfig
 function M.setup(opts)
   config.setup(opts)
+  if config.get().auto_restore_sessions then
+    vim.schedule(function()
+      session.restore_project()
+    end)
+  end
 end
 
 ---Create a new agent session and open its UI
@@ -435,6 +440,79 @@ function M.delete_session(target)
     end, "Select Session to Delete:")
   end
 end
+
+---Restart the current or specified session (in-place)
+---@param target? string Session name or ID (defaults to current active session)
+function M.restart_session(target)
+  local sess = (target and session.find(target)) or session.get_current()
+
+  if sess then
+    session.restart(sess)
+  else
+    ui.select_session(function(selected)
+      session.restart(selected)
+    end, "Select Session to Restart:")
+  end
+end
+
+---Alias for restart_session
+M.restart = M.restart_session
+
+---Export a session's transcript to a markdown file
+---@param target? string Session name or ID (defaults to current active session)
+---@param file_path? string Optional destination path (prompts if nil)
+function M.export_session(target, file_path)
+  local sess = (target and session.find(target)) or session.get_current()
+
+  local function do_export(s, path)
+    if not path or vim.trim(path) == "" then
+      local opts = config.get()
+      local exports_dir = (opts.session_dir or (vim.fn.stdpath("data") .. "/agent-sessions")) .. "/exports"
+      local safe_name = s.name:gsub("[^%w_%-]", "_")
+      local default_name = exports_dir .. "/" .. string.format("%s_%s.md", safe_name, os.date("%Y%m%d_%H%M%S"))
+
+      vim.ui.input({ prompt = "Export transcript path: ", default = default_name }, function(input)
+        if input and vim.trim(input) ~= "" then
+          session.export(s, input)
+        end
+      end)
+    else
+      session.export(s, path)
+    end
+  end
+
+  if sess then
+    do_export(sess, file_path)
+  else
+    ui.select_session(function(selected)
+      do_export(selected, file_path)
+    end, "Select Session to Export:")
+  end
+end
+
+---Alias for export_session
+M.export = M.export_session
+
+---Save active sessions for the current project / directory
+---@param cwd? string
+function M.save_project_sessions(cwd)
+  session.save_project(cwd)
+end
+
+---Alias for save_project_sessions
+M.save = M.save_project_sessions
+M.save_sessions = M.save_project_sessions
+
+---Restore saved sessions for the current project / directory
+---@param cwd? string
+---@return Session[]
+function M.restore_project_sessions(cwd)
+  return session.restore_project(cwd)
+end
+
+---Alias for restore_project_sessions
+M.restore = M.restore_project_sessions
+M.restore_sessions = M.restore_project_sessions
 
 ---Get formatted status string for statusline / lualine
 ---@return string

@@ -57,6 +57,16 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     local dest = args[3]
     local instruction = #args > 3 and table.concat(args, " ", 4) or nil
     agent_session.pipe_session(source, dest, instruction)
+  elseif subcmd == "restart" then
+    agent_session.restart_session(args[2])
+  elseif subcmd == "export" then
+    local target = args[2]
+    local file_path = #args > 2 and table.concat(args, " ", 3) or nil
+    agent_session.export_session(target, file_path)
+  elseif subcmd == "save" then
+    agent_session.save_project_sessions(args[2])
+  elseif subcmd == "restore" then
+    agent_session.restore_project_sessions(args[2])
   else
     vim.notify("[agent-session] Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
   end
@@ -64,8 +74,24 @@ end, {
   nargs = "*",
   complete = function(_, line)
     local l = vim.split(line, "%s+", { trimempty = true })
-    local subcommands =
-      { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename", "prompt", "send", "pipe" }
+    local subcommands = {
+      "toggle",
+      "new",
+      "list",
+      "status",
+      "agent",
+      "sidebar",
+      "tree",
+      "delete",
+      "rename",
+      "prompt",
+      "send",
+      "pipe",
+      "restart",
+      "export",
+      "save",
+      "restore",
+    }
     local has_trailing_space = vim.endswith(line, " ")
 
     if #l == 1 and has_trailing_space then
@@ -83,7 +109,16 @@ end, {
         return vim.tbl_filter(function(item)
           return vim.startswith(item, lead)
         end, agents)
-      elseif sub == "delete" or sub == "prompt" or sub == "send" or sub == "send-to" or sub == "pipe" then
+      elseif
+        sub == "delete"
+        or sub == "rename"
+        or sub == "prompt"
+        or sub == "send"
+        or sub == "send-to"
+        or sub == "pipe"
+        or sub == "restart"
+        or sub == "export"
+      then
         return complete_session_targets(lead)
       end
     elseif
@@ -282,4 +317,50 @@ end, {
     return complete_session_targets(l[2] or "")
   end,
   desc = "Send current file reference to a chosen target session",
+})
+
+-- :AgentSessionRestart [target]
+vim.api.nvim_create_user_command("AgentSessionRestart", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.restart_session(args[1])
+end, {
+  nargs = "?",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    return complete_session_targets(l[2] or "")
+  end,
+  desc = "Restart current or specified session in-place",
+})
+
+-- :AgentSessionExport [target] [file_path]
+vim.api.nvim_create_user_command("AgentSessionExport", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  local target = args[1]
+  local file_path = #args > 1 and table.concat(args, " ", 2) or nil
+  agent_session.export_session(target, file_path)
+end, {
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    return complete_session_targets(l[2] or "")
+  end,
+  desc = "Export session transcript to a markdown file",
+})
+
+-- :AgentSessionSave [cwd]
+vim.api.nvim_create_user_command("AgentSessionSave", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.save_project_sessions(args[1])
+end, {
+  nargs = "?",
+  desc = "Save active sessions for current project directory",
+})
+
+-- :AgentSessionRestore [cwd]
+vim.api.nvim_create_user_command("AgentSessionRestore", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.restore_project_sessions(args[1])
+end, {
+  nargs = "?",
+  desc = "Restore saved sessions for current project directory",
 })

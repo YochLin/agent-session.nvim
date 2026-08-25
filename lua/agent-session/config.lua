@@ -7,6 +7,8 @@
 ---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field notify_on_exit? boolean Notify when a background session exits (default: true)
 ---@field notifications? AgentSessionNotificationConfig Notification settings
+---@field auto_save_sessions? boolean Automatically save project sessions on exit (default: false)
+---@field auto_restore_sessions? boolean Automatically restore project sessions on setup (default: false)
 
 ---@class AgentSessionNotificationConfig
 ---@field enabled? boolean Enable/disable all notifications (default: true)
@@ -80,6 +82,8 @@ M.defaults = {
     on_idle = true,
     on_exit = true,
   },
+  auto_save_sessions = false, -- Automatically save active sessions for current project on VimLeavePre
+  auto_restore_sessions = false, -- Automatically restore saved sessions for current project on setup
   status_icons = {
     running = "⚡",
     idle = "🟢",
