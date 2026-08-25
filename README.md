@@ -10,6 +10,7 @@ A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g.
 - 🎯 **Targeted Prompting & Session Dispatch**: Send prompts or commands to specific agents by friendly name or interactive picker without switching contexts.
 - 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
 - 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
+- 🔔 **Background Task Notifications**: Receive automatic notifications (`vim.notify` / nvim-notify / Snacks) when unfocused background agent sessions complete tasks (idle) or exit.
 - 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
 - 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
 - 🧩 **Lazy.nvim & LazyVim & AstroNvim Ready**: Zero-boilerplate setup and keymapping configuration.
@@ -77,6 +78,13 @@ return {
       height = 0.35,     -- 35% height under neo-tree (in bottom-left)
     },
     idle_timeout = 800, -- ms of silence before switching from running to idle
+    notify_on_idle = true, -- notify when a background session finishes task (idle)
+    notify_on_exit = true, -- notify when a background session process exits
+    notifications = {
+      enabled = true,
+      on_idle = true,
+      on_exit = true,
+    },
     status_icons = {
       running = "⚡",
       idle = "🟢",
@@ -125,6 +133,13 @@ require("agent-session").setup({
     title = " Agent Session ",
   },
   idle_timeout = 800, -- Milliseconds of silence before marking session as idle
+  notify_on_idle = true, -- Notify when a background session finishes task
+  notify_on_exit = true, -- Notify when a background session process exits
+  notifications = {
+    enabled = true,
+    on_idle = true,
+    on_exit = true,
+  },
   status_icons = {
     running = "⚡",
     idle = "🟢",

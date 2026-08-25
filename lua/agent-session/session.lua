@@ -1,4 +1,5 @@
 local config = require("agent-session.config")
+local uv = vim.uv or vim.loop
 
 local M = {}
 
@@ -10,9 +11,11 @@ local M = {}
 ---@field job_id number Terminal job ID
 ---@field created_at number Timestamp
 ---@field status "running"|"idle"|"stopped" Session status
+---@field exit_code number|nil Process exit code
 ---@field _timer userdata|nil Libuv timer for idle debouncing
 ---@field _saved_view table|nil Saved window view from winsaveview()
 ---@field _saved_mode "t"|"n"|nil Last active mode when unfocused ("t" for terminal, "n" for normal)
+---@field _is_initial boolean|nil Whether this is the initial startup before any task
 
 ---@type table<string, Session>
 M._active_sessions = {}
@@ -152,6 +155,76 @@ function M.sync_all()
   end
 end
 
+---Check if session is currently focused in the active window
+---@param session Session
+---@return boolean
+function M.is_focused(session)
+  if not session or not session.bufnr or not vim.api.nvim_buf_is_valid(session.bufnr) then
+    return false
+  end
+  return vim.api.nvim_get_current_buf() == session.bufnr
+end
+
+---Handle background notifications when session status changes
+---@param session Session
+---@param new_status "running"|"idle"|"stopped"
+---@param old_status "running"|"idle"|"stopped"
+---@param opts AgentSessionConfig
+function M._handle_status_notification(session, new_status, old_status, opts)
+  local notify_cfg = opts.notifications or {}
+  if notify_cfg.enabled == false then
+    return
+  end
+
+  -- Don't notify if the user is actively focused on this session's buffer
+  if M.is_focused(session) then
+    return
+  end
+
+  if new_status == "idle" and old_status == "running" then
+    -- Suppress notification on initial session spawn debounce
+    if session._is_initial then
+      session._is_initial = false
+      return
+    end
+
+    local should_notify = notify_cfg.on_idle
+    if should_notify == nil then
+      should_notify = opts.notify_on_idle
+    end
+    if should_notify == nil then
+      should_notify = true
+    end
+
+    if should_notify then
+      local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
+      vim.notify(msg, vim.log.levels.INFO, {
+        title = "Agent Session",
+        icon = "🤖",
+      })
+    end
+  elseif new_status == "stopped" and (old_status == "running" or old_status == "idle") then
+    local should_notify = notify_cfg.on_exit
+    if should_notify == nil then
+      should_notify = opts.notify_on_exit
+    end
+    if should_notify == nil then
+      should_notify = true
+    end
+
+    if should_notify then
+      local level = (session.exit_code and session.exit_code ~= 0) and vim.log.levels.WARN or vim.log.levels.INFO
+      local msg = session.exit_code
+          and string.format("Agent '%s' (%s) stopped with exit code %d", session.name, session.agent, session.exit_code)
+        or string.format("Agent '%s' (%s) process stopped", session.name, session.agent)
+      vim.notify(msg, level, {
+        title = "Agent Session",
+        icon = "⚪",
+      })
+    end
+  end
+end
+
 ---Set status for a session and trigger notifications & UI refresh
 ---@param session_or_id Session|string
 ---@param new_status "running"|"idle"|"stopped"
@@ -174,6 +247,9 @@ function M.set_status(session_or_id, new_status)
     if opts.hooks and opts.hooks.on_status_change then
       opts.hooks.on_status_change(session, new_status, old_status)
     end
+
+    -- Background task notification (when unfocused / hidden)
+    M._handle_status_notification(session, new_status, old_status, opts)
 
     -- Trigger User autocommand for integrations (e.g. lualine, statusline)
     vim.api.nvim_exec_autocmds("User", {
@@ -236,7 +312,7 @@ function M.create(name, agent_name)
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.bo[bufnr].bufhidden = "hide"
 
-  local timer = vim.loop.new_timer()
+  local timer = uv.new_timer()
 
   ---@type Session
   local session = {
@@ -247,9 +323,11 @@ function M.create(name, agent_name)
     job_id = 0,
     created_at = os.time(),
     status = "running",
+    exit_code = nil,
     _timer = timer,
     _saved_view = nil,
     _saved_mode = "t",
+    _is_initial = true,
   }
 
   M._active_sessions[id] = session
@@ -288,6 +366,7 @@ function M.create(name, agent_name)
         timer:stop()
         timer:close()
       end
+      session.exit_code = exit_code
       M.set_status(session, "stopped")
       if opts.hooks and opts.hooks.on_session_exit then
         opts.hooks.on_session_exit(session, exit_code)
@@ -398,9 +477,6 @@ end
 ---Send input text / prompt to the session
 ---@param id string
 ---@param text string
----Send text to a session's terminal input
----@param id string
----@param text string
 ---@param submit? boolean Append a newline to submit immediately (default true)
 function M.send_text(id, text, submit)
   if submit == nil then
@@ -412,6 +488,8 @@ function M.send_text(id, text, submit)
     vim.notify("[agent-session] Session is not active.", vim.log.levels.WARN)
     return
   end
+
+  session._is_initial = false
 
   if session.job_id > 0 then
     M.set_status(session, "running")
@@ -427,6 +505,7 @@ function M.strip_ansi(text)
     return ""
   end
   local s = text:gsub("\27%[[0-9;?]*[a-zA-Z]", "")
+  s = s:gsub("\27%][0-9];[^\7\27]*[\7\27\\]", "")
   s = s:gsub("\27%][0-9];[^\7]*\7", "")
   s = s:gsub("\27%([a-zA-Z0-9]", "")
   s = s:gsub("\r", "")
