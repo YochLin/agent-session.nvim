@@ -170,20 +170,33 @@ end
 
 ---Restore saved view and mode for a session in M._current_win
 ---@param session Session
----@param focus_input? boolean Force terminal insert mode
-local function restore_session_view_and_mode(session, focus_input)
+---@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean }
+local function restore_session_view_and_mode(session, open_opts)
   if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
     return
   end
 
+  open_opts = open_opts or {}
   local opts = config.get()
   local ui_opts = opts.ui or {}
   local restore_enabled = ui_opts.restore_view ~= false
 
   vim.api.nvim_set_current_win(M._current_win)
 
-  if focus_input then
+  if open_opts.focus_input then
     vim.cmd("startinsert")
+    return
+  end
+
+  if open_opts.stay_in_normal then
+    vim.cmd("stopinsert")
+    if restore_enabled and session._saved_view then
+      pcall(function()
+        vim.api.nvim_win_call(M._current_win, function()
+          vim.fn.winrestview(session._saved_view)
+        end)
+      end)
+    end
     return
   end
 
@@ -204,7 +217,7 @@ end
 
 ---Open a session in window
 ---@param session Session
----@param open_opts? { focus_input?: boolean }
+---@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean }
 function M.open(session, open_opts)
   if not session or not vim.api.nvim_buf_is_valid(session.bufnr) then
     vim.notify("[agent-session] Invalid session buffer", vim.log.levels.ERROR)
@@ -223,7 +236,7 @@ function M.open(session, open_opts)
     apply_win_options(M._current_win)
     session_mod.set_current(session.id)
     M.refresh_title(session)
-    restore_session_view_and_mode(session, open_opts.focus_input)
+    restore_session_view_and_mode(session, open_opts)
     return
   end
 
@@ -268,12 +281,12 @@ function M.open(session, open_opts)
   })
 
   session_mod.set_current(session.id)
-  restore_session_view_and_mode(session, open_opts.focus_input)
+  restore_session_view_and_mode(session, open_opts)
 
   -- Map q to hide window in normal mode
   vim.keymap.set("n", "q", function()
     M.close_window()
-  end, { buffer = session.bufnr, nowait = true, silent = true })
+  end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Hide agent session window" })
 
   -- Map R to rename this session (normal mode only, doesn't interfere with terminal input)
   vim.keymap.set("n", "R", function()
@@ -282,7 +295,26 @@ function M.open(session, open_opts)
         session_mod.rename(session.id, new_name)
       end
     end)
-  end, { buffer = session.bufnr, nowait = true, silent = true })
+  end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Rename agent session" })
+
+  -- Buffer-local navigation keymaps (normal mode) to cycle between sessions like buffer tabs
+  local function map_cycle(lhs, dir)
+    vim.keymap.set("n", lhs, function()
+      require("agent-session").cycle_session(dir, { stay_in_normal = true })
+    end, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = dir > 0 and "Next agent session" or "Previous agent session",
+    })
+  end
+
+  map_cycle("]b", 1)
+  map_cycle("[b", -1)
+  map_cycle("]s", 1)
+  map_cycle("[s", -1)
+  map_cycle("]a", 1)
+  map_cycle("[a", -1)
 end
 
 ---Close current UI window (without killing the session)

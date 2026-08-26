@@ -34,6 +34,22 @@ function M.get_all()
   return M._active_sessions
 end
 
+---Get ordered list of all active sessions (by creation timestamp or name)
+---@return Session[]
+function M.get_ordered()
+  local list = {}
+  for _, s in pairs(M._active_sessions) do
+    table.insert(list, s)
+  end
+  table.sort(list, function(a, b)
+    if (a.created_at or 0) == (b.created_at or 0) then
+      return a.name < b.name
+    end
+    return (a.created_at or 0) < (b.created_at or 0)
+  end)
+  return list
+end
+
 ---Get a session by ID
 ---@param id string
 ---@return Session|nil

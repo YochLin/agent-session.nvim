@@ -62,11 +62,17 @@ Default options: >lua
 ==============================================================================
 4. COMMANDS                                           *agent-session-commands*
 
-:AgentSession [toggle|new|list|delete|rename|prompt|send]
+:AgentSession [toggle|new|list|next|prev|delete|rename|prompt|send]
     Main command router to manage agent sessions.
 
 :AgentSessionToggle
     Toggle the active agent session window.
+
+:AgentSessionNext / :AgentSession next
+    Switch to next agent session in chronological order.
+
+:AgentSessionPrev / :AgentSession prev
+    Switch to previous agent session.
 
 :AgentSessionNew [name] [agent]
     Create and launch a new agent session.
@@ -115,6 +121,15 @@ require("agent-session").setup(opts)
 
 require("agent-session").new_session(name, agent_name)
     Create a new agent session.
+
+require("agent-session").next_session(opts)
+    Switch to next agent session.
+
+require("agent-session").prev_session(opts)
+    Switch to previous agent session.
+
+require("agent-session").cycle_session(direction, opts)
+    Cycle between active agent sessions (direction: 1 for next, -1 for previous).
 
 require("agent-session").toggle()
     Toggle current session window.

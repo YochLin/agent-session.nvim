@@ -32,6 +32,10 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     agent_session.new_session(args[2], args[3])
   elseif subcmd == "list" then
     agent_session.list_sessions()
+  elseif subcmd == "next" then
+    agent_session.next_session()
+  elseif subcmd == "prev" or subcmd == "previous" then
+    agent_session.prev_session()
   elseif subcmd == "status" then
     if args[2] then
       agent_session.set_status(args[2], args[3])
@@ -64,8 +68,22 @@ end, {
   nargs = "*",
   complete = function(_, line)
     local l = vim.split(line, "%s+", { trimempty = true })
-    local subcommands =
-      { "toggle", "new", "list", "status", "agent", "sidebar", "tree", "delete", "rename", "prompt", "send", "pipe" }
+    local subcommands = {
+      "toggle",
+      "new",
+      "list",
+      "next",
+      "prev",
+      "status",
+      "agent",
+      "sidebar",
+      "tree",
+      "delete",
+      "rename",
+      "prompt",
+      "send",
+      "pipe",
+    }
     local has_trailing_space = vim.endswith(line, " ")
 
     if #l == 1 and has_trailing_space then
@@ -101,6 +119,14 @@ end, {
 vim.api.nvim_create_user_command("AgentSessionToggle", function()
   agent_session.toggle()
 end, { desc = "Toggle agent session window" })
+
+vim.api.nvim_create_user_command("AgentSessionNext", function()
+  agent_session.next_session()
+end, { desc = "Switch to next agent session" })
+
+vim.api.nvim_create_user_command("AgentSessionPrev", function()
+  agent_session.prev_session()
+end, { desc = "Switch to previous agent session" })
 
 vim.api.nvim_create_user_command("AgentSessionNew", function(opts)
   local args = vim.split(opts.args, "%s+", { trimempty = true })
