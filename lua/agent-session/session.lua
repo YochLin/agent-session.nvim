@@ -7,6 +7,7 @@ local M = {}
 ---@field id string Unique ID
 ---@field name string Session name
 ---@field agent string Agent key (e.g. "claude")
+---@field cli_session_id string Unique CLI Session ID (UUID)
 ---@field bufnr number Terminal buffer number
 ---@field job_id number Terminal job ID
 ---@field created_at number Timestamp
@@ -21,6 +22,18 @@ local M = {}
 M._active_sessions = {}
 ---@type string|nil
 M._current_session_id = nil
+
+---Generate a standard UUIDv4 string
+---@return string
+local function generate_uuid()
+  local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
+  return (
+    string.gsub(template, "[xy]", function(c)
+      local v = (c == "x") and math.random(0, 0xf) or math.random(8, 0xb)
+      return string.format("%x", v)
+    end)
+  )
+end
 
 ---Generate a random session ID
 ---@return string
@@ -276,15 +289,61 @@ function M.set_status(session_or_id, new_status)
   end)
 end
 
+---Build command arguments for launching or resuming an agent
+---@param agent_def AgentDefinition
+---@param cli_session_id string
+---@param is_resume boolean
+---@return string[]
+local function build_agent_cmd(agent_def, cli_session_id, is_resume)
+  local cmd = agent_def.cmd
+  if type(cmd) == "table" then
+    cmd = vim.deepcopy(cmd)
+  else
+    cmd = { cmd }
+  end
+
+  if is_resume then
+    if agent_def.resume_args and type(agent_def.resume_args) == "function" then
+      local custom_args = agent_def.resume_args(cli_session_id)
+      if type(custom_args) == "table" then
+        for _, arg in ipairs(custom_args) do
+          table.insert(cmd, arg)
+        end
+      end
+    elseif agent_def.resume_flag then
+      table.insert(cmd, agent_def.resume_flag)
+      if cli_session_id and cli_session_id ~= "" then
+        table.insert(cmd, cli_session_id)
+      end
+    end
+  else
+    if agent_def.session_id_flag and cli_session_id and cli_session_id ~= "" then
+      table.insert(cmd, agent_def.session_id_flag)
+      table.insert(cmd, cli_session_id)
+    end
+  end
+
+  if agent_def.args then
+    for _, arg in ipairs(agent_def.args) do
+      table.insert(cmd, arg)
+    end
+  end
+
+  return cmd
+end
+
 ---Create and launch a new agent session
 ---@param name? string
 ---@param agent_name? string
+---@param create_opts? { cli_session_id?: string, is_resume?: boolean }
 ---@return Session
-function M.create(name, agent_name)
+function M.create(name, agent_name, create_opts)
+  create_opts = create_opts or {}
   local opts = config.get()
   local id = generate_id()
   name = name or ("session-" .. os.date("%m%d-%H%M"))
   agent_name = agent_name or opts.default_agent or "claude"
+  local cli_session_id = create_opts.cli_session_id or generate_uuid()
 
   local agent_def = (opts.agents and opts.agents[agent_name])
   if not agent_def then
@@ -295,18 +354,7 @@ function M.create(name, agent_name)
     end
   end
 
-  local cmd = agent_def.cmd
-  if type(cmd) == "table" then
-    cmd = vim.deepcopy(cmd)
-  else
-    cmd = { cmd }
-  end
-
-  if agent_def.args then
-    for _, arg in ipairs(agent_def.args) do
-      table.insert(cmd, arg)
-    end
-  end
+  local cmd = build_agent_cmd(agent_def, cli_session_id, create_opts.is_resume == true)
 
   -- Create an unlisted buffer for the terminal
   local bufnr = vim.api.nvim_create_buf(false, true)
@@ -319,6 +367,7 @@ function M.create(name, agent_name)
     id = id,
     name = name,
     agent = agent_name,
+    cli_session_id = cli_session_id,
     bufnr = bufnr,
     job_id = 0,
     created_at = os.time(),
@@ -629,18 +678,13 @@ function M.restart(session_or_id)
     end
   end
 
-  local cmd = agent_def.cmd
-  if type(cmd) == "table" then
-    cmd = vim.deepcopy(cmd)
-  else
-    cmd = { cmd }
+  -- Ensure session has a CLI session UUID
+  if not sess.cli_session_id or sess.cli_session_id == "" then
+    sess.cli_session_id = generate_uuid()
   end
 
-  if agent_def.args then
-    for _, arg in ipairs(agent_def.args) do
-      table.insert(cmd, arg)
-    end
-  end
+  -- Build command with resume capability
+  local cmd = build_agent_cmd(agent_def, sess.cli_session_id, true)
 
   -- Stop active job and timer
   if sess._timer and not sess._timer:is_closing() then
@@ -839,10 +883,11 @@ function M.export(session_or_id, file_path)
   end
 
   local header = string.format(
-    "# Agent Session Transcript: %s\n\n- **Agent**: `%s`\n- **Session ID**: `%s`\n- **Created At**: `%s`\n- **Exported At**: `%s`\n- **Status**: `%s`\n\n---\n\n```text\n",
+    "# Agent Session Transcript: %s\n\n- **Agent**: `%s`\n- **Session ID**: `%s`\n- **CLI Session ID**: `%s`\n- **Created At**: `%s`\n- **Exported At**: `%s`\n- **Status**: `%s`\n\n---\n\n```text\n",
     sess.name,
     sess.agent,
     sess.id,
+    sess.cli_session_id or "N/A",
     os.date("%Y-%m-%d %H:%M:%S", sess.created_at or os.time()),
     os.date("%Y-%m-%d %H:%M:%S"),
     sess.status
@@ -895,6 +940,7 @@ function M.save_project(cwd)
     table.insert(sessions_data, {
       name = s.name,
       agent = s.agent,
+      cli_session_id = s.cli_session_id,
     })
   end
 
@@ -963,7 +1009,10 @@ function M.restore_project(cwd)
   for _, item in ipairs(data.sessions) do
     local existing = M.find(item.name)
     if not existing then
-      local s = M.create(item.name, item.agent)
+      local s = M.create(item.name, item.agent, {
+        cli_session_id = item.cli_session_id,
+        is_resume = true,
+      })
       table.insert(restored, s)
     else
       table.insert(restored, existing)

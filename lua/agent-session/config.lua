@@ -19,6 +19,9 @@
 ---@field cmd string|string[] Base command or function to launch agent
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
+---@field session_id_flag? string Flag to specify session ID on launch (e.g. "--session-id")
+---@field resume_flag? string Flag to resume a session by ID (e.g. "--resume")
+---@field resume_args? fun(session_id: string): string[] Custom function to generate resume arguments
 
 ---@class AgentSessionUIConfig
 ---@field width? number Float width (0-1 float or integer)
@@ -39,21 +42,27 @@ M.defaults = {
       cmd = "claude",
       args = {},
       env = {},
+      session_id_flag = "--session-id",
+      resume_flag = "--resume",
     },
     agy = {
       cmd = "agy",
       args = {},
       env = {},
+      resume_flag = "--resume",
     },
     codex = {
       cmd = "codex",
       args = {},
       env = {},
+      session_id_flag = "--session-id",
+      resume_flag = "--resume",
     },
     gemini = {
       cmd = "gemini",
       args = {},
       env = {},
+      resume_flag = "--resume",
     },
     sh = {
       cmd = vim.o.shell,
