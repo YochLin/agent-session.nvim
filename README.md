@@ -178,7 +178,7 @@ require("agent-session").setup({
 | `:AgentSessionNext` / `:AgentSession next` | Switch to next agent session (chronological order) |
 | `:AgentSessionPrev` / `:AgentSession prev` | Switch to previous agent session |
 | `:AgentSessionGoto [N]` / `:AgentSession [N]` | Jump directly to agent session by tab index number |
-| `:AgentSessionNew [agent\|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
+| `:AgentSessionNew [agent|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
 | `:AgentSessionSelectAgent` | Open interactive picker to choose which agent to launch |
 | `:AgentSessionList` | Open interactive session picker to switch active session |
 | `:AgentSessionPrompt [target] [prompt]` | Send prompt/command to a specific session (interactive picker if omitted) |
@@ -190,7 +190,7 @@ require("agent-session").setup({
 | `:AgentSessionSendLineTo [target]` | Send line/selection reference directly to a chosen target session |
 | `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
-| `:AgentSession status [idle\|running]` | Check or set current session status |
+| `:AgentSession status [idle|running]` | Check or set current session status |
 
 ### 🔀 Session Window Keymaps & Tab Navigation (Normal Mode)
 

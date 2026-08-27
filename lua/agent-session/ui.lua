@@ -569,7 +569,6 @@ function M.open(session, open_opts)
   map_zoom("Z")
   map_zoom("<C-w>z")
   map_zoom("<C-w>m")
-
   -- Buffer-local navigation keymaps (normal mode) to cycle between sessions like buffer tabs
   local function map_cycle(lhs, dir)
     vim.keymap.set("n", lhs, function()

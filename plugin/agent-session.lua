@@ -143,7 +143,6 @@ end, { desc = "Toggle between center full (float) screen and side split view" })
 vim.api.nvim_create_user_command("AgentSessionToggleZoom", function()
   agent_session.toggle_zoom()
 end, { desc = "Toggle between center full (float) screen and side split view" })
-
 vim.api.nvim_create_user_command("AgentSessionNext", function()
   agent_session.next_session()
 end, { desc = "Switch to next agent session" })
