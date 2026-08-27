@@ -63,6 +63,127 @@ function M.list_sessions()
   end)
 end
 
+---Cycle to next or previous agent session
+---@param direction? 1|-1 Direction to cycle (1 for next, -1 for previous)
+---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
+---@return Session|nil
+function M.cycle_session(direction, opts)
+  direction = direction or 1
+  opts = opts or {}
+  session.sync_all()
+
+  local list = session.get_ordered()
+  if #list == 0 then
+    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.WARN)
+    return nil
+  end
+
+  if #list == 1 then
+    local single = list[1]
+    ui.open(single, opts)
+    if opts.notify == true then
+      vim.notify(
+        string.format("[agent-session] Active session: '%s' (%s) [1/1]", single.name, single.agent),
+        vim.log.levels.INFO
+      )
+    end
+    return single
+  end
+
+  -- Determine current session index
+  local cur = session.get_current()
+  local cur_idx = 1
+  if cur then
+    for i, s in ipairs(list) do
+      if s.id == cur.id then
+        cur_idx = i
+        break
+      end
+    end
+  end
+
+  local count = #list
+  local next_idx
+  if direction >= 0 then
+    next_idx = (cur_idx % count) + 1
+  else
+    next_idx = ((cur_idx - 2 + count) % count) + 1
+  end
+
+  local target = list[next_idx]
+  ui.open(target, opts)
+
+  if opts.notify == true then
+    local cfg = config.get()
+    local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    local icon = icons[target.status] or ""
+    vim.notify(
+      string.format(
+        "[agent-session] Switched to '%s' [%s %s] (%d/%d)",
+        target.name,
+        icon,
+        target.status,
+        next_idx,
+        count
+      ),
+      vim.log.levels.INFO
+    )
+  end
+
+  return target
+end
+
+---Switch to the next agent session
+---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
+---@return Session|nil
+function M.next_session(opts)
+  return M.cycle_session(1, opts)
+end
+
+---Switch to the previous agent session
+---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
+---@return Session|nil
+function M.prev_session(opts)
+  return M.cycle_session(-1, opts)
+end
+
+---Switch directly to the agent session at the given 1-based index (e.g. from tab bar number)
+---@param index integer
+---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
+---@return Session|nil
+function M.goto_session(index, opts)
+  opts = opts or {}
+  session.sync_all()
+  local list = session.get_ordered()
+  if #list == 0 then
+    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.WARN)
+    return nil
+  end
+
+  if not list[index] then
+    vim.notify(
+      string.format("[agent-session] No session at index %d (active sessions: %d)", index, #list),
+      vim.log.levels.WARN
+    )
+    return nil
+  end
+
+  local target = list[index]
+  ui.open(target, opts)
+
+  if opts.notify == true then
+    local cfg = config.get()
+    local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    local icon = icons[target.status] or ""
+    vim.notify(
+      string.format("[agent-session] Switched to '%s' [%s %s] (%d/%d)", target.name, icon, target.status, index, #list),
+      vim.log.levels.INFO
+    )
+  end
+
+  return target
+end
+
 ---Send prompt / command text to active session
 ---@param text string
 function M.send(text)
@@ -444,9 +565,15 @@ function M.status()
     return ""
   end
   session.sync_status(cur)
-  local opts = config.get()
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
-  local icon = icons[cur.status] or ""
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  local icon
+  if ok_ui and ui_mod.get_status_icon then
+    icon = ui_mod.get_status_icon(cur.status)
+  else
+    local opts = config.get()
+    local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    icon = icons[cur.status] or ""
+  end
   return string.format("%s %s", icon, cur.status)
 end
 

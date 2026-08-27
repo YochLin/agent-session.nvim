@@ -28,16 +28,32 @@ function M.render()
     return
   end
 
+  -- Save cursor position so periodic spinner re-renders do not reset cursor
+  local saved_cursor = nil
+  if M._win and vim.api.nvim_win_is_valid(M._win) then
+    pcall(function()
+      saved_cursor = vim.api.nvim_win_get_cursor(M._win)
+    end)
+  end
+
   session_mod.sync_all()
   setup_highlights()
   vim.bo[M._bufnr].modifiable = true
   M._line_map = {}
 
-  local opts = config.get()
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
   local all = session_mod.get_all()
   local cur_sess = session_mod.get_current()
   local total_count = vim.tbl_count(all)
+
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  local function get_icon(status)
+    if ok_ui and ui_mod.get_status_icon then
+      return ui_mod.get_status_icon(status)
+    end
+    local opts = config.get()
+    local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    return icons[status] or "•"
+  end
 
   local lines = {}
   local highlights = {} -- { { line, col_start, col_end, group } }
@@ -86,7 +102,7 @@ function M.render()
     for _, s in ipairs(active_list) do
       local is_current = cur_sess and cur_sess.id == s.id
       local prefix = is_current and " ➜ " or "   "
-      local icon = icons[s.status] or "•"
+      local icon = get_icon(s.status)
       local line_text = string.format("%s%s %-12s [%s]", prefix, icon, s.name, s.agent)
 
       table.insert(lines, line_text)
@@ -108,7 +124,7 @@ function M.render()
     table.insert(highlights, { #lines, 0, -1, "AgentSessionHelp" })
 
     for _, s in ipairs(stopped_sessions) do
-      local icon = icons[s.status] or "⚪"
+      local icon = get_icon(s.status)
       local line_text = string.format("   %s %-12s [%s]", icon, s.name, s.agent)
       table.insert(lines, line_text)
       local line_idx = #lines
@@ -130,6 +146,15 @@ function M.render()
 
   vim.api.nvim_buf_set_lines(M._bufnr, 0, -1, false, lines)
   vim.bo[M._bufnr].modifiable = false
+
+  -- Restore cursor position
+  if saved_cursor and M._win and vim.api.nvim_win_is_valid(M._win) then
+    pcall(function()
+      local line_count = #lines
+      local target_line = math.max(1, math.min(saved_cursor[1], line_count))
+      vim.api.nvim_win_set_cursor(M._win, { target_line, saved_cursor[2] })
+    end)
+  end
 
   -- Apply syntax highlights
   local ns_id = vim.api.nvim_create_namespace("AgentSessionSidebar")
@@ -442,11 +467,26 @@ function M.open()
     callback = function()
       if M._win == cur_win then
         M._win = nil
+        local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+        if ok_ui and ui_mod.refresh_title then
+          ui_mod.refresh_title()
+        end
       end
     end,
   })
 
   M.render()
+
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  if ok_ui and ui_mod._start_spinner then
+    ui_mod._start_spinner()
+  end
+end
+
+---Check if sidebar is open
+---@return boolean
+function M.is_open()
+  return M._win ~= nil and vim.api.nvim_win_is_valid(M._win)
 end
 
 ---Close the sidebar
@@ -454,6 +494,10 @@ function M.close()
   if M._win and vim.api.nvim_win_is_valid(M._win) then
     vim.api.nvim_win_close(M._win, true)
     M._win = nil
+    local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+    if ok_ui and ui_mod.refresh_title then
+      ui_mod.refresh_title()
+    end
   end
 end
 

@@ -1,10 +1,97 @@
 local config = require("agent-session.config")
 local session_mod = require("agent-session.session")
+local uv = vim.uv or vim.loop
 
 local M = {}
 
 ---@type number|nil
 M._current_win = nil
+---@type userdata|nil
+M._spinner_timer = nil
+---@type integer
+M._spinner_frame_idx = 1
+
+---Check if any active session is currently running
+---@return boolean
+local function has_running_session()
+  local all = session_mod.get_all()
+  for _, s in pairs(all) do
+    if s.status == "running" then
+      return true
+    end
+  end
+  return false
+end
+
+---Get status icon for a session (with animated spinner if running)
+---@param status "running"|"idle"|"stopped"
+---@return string
+function M.get_status_icon(status)
+  local opts = config.get()
+  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+  local spinner_cfg = opts.spinner or {}
+
+  if status == "running" and spinner_cfg.enabled ~= false then
+    local frames = spinner_cfg.frames or { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+    local idx = ((M._spinner_frame_idx - 1) % #frames) + 1
+    return frames[idx]
+  end
+
+  return icons[status] or "•"
+end
+
+---Start animated spinner timer (only when running sessions exist and UI window or sidebar is open)
+function M._start_spinner()
+  local opts = config.get()
+  local spinner_cfg = opts.spinner or {}
+  if spinner_cfg.enabled == false then
+    return
+  end
+
+  if M._spinner_timer and not M._spinner_timer:is_closing() then
+    return
+  end
+
+  M._spinner_timer = uv.new_timer()
+  local interval = spinner_cfg.interval or 80
+  M._spinner_timer:start(
+    interval,
+    interval,
+    vim.schedule_wrap(function()
+      local win_open = M._current_win and vim.api.nvim_win_is_valid(M._current_win)
+      local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+      local sb_open = ok_sb and sidebar_mod.is_open and sidebar_mod.is_open()
+      local running = has_running_session()
+
+      if not running or (not win_open and not sb_open) then
+        M._stop_spinner()
+        return
+      end
+
+      local frames = (config.get().spinner and config.get().spinner.frames)
+        or { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+      M._spinner_frame_idx = (M._spinner_frame_idx % #frames) + 1
+
+      if win_open then
+        M.refresh_title()
+      end
+      if sb_open then
+        sidebar_mod.render()
+      end
+    end)
+  )
+end
+
+---Stop animated spinner timer
+function M._stop_spinner()
+  if M._spinner_timer then
+    if not M._spinner_timer:is_closing() then
+      M._spinner_timer:stop()
+      M._spinner_timer:close()
+    end
+    M._spinner_timer = nil
+  end
+end
 
 ---Calculate floating window dimensions
 ---@param ui_opts AgentSessionUIConfig
@@ -78,54 +165,188 @@ local function apply_win_options(win)
   end
 end
 
----Format title for session window
----@param session Session
+---Setup syntax highlights for tabs
+local function setup_tab_highlights()
+  vim.api.nvim_set_hl(0, "AgentSessionTab", { link = "TabLine", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabSel", { link = "TabLineSel", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabDivider", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabRunning", { fg = "#f1fa8c", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabIdle", { fg = "#50fa7b", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabStopped", { fg = "#6272a4", default = true })
+end
+
+---Format title chunks for floating window
+---@param current_session? Session
+---@return table chunks
+function M.format_float_title_chunks(current_session)
+  setup_tab_highlights()
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+
+  if ui_opts.tabbar == false then
+    if not current_session then
+      return { { ui_opts.title or " Agent Session ", "AgentSessionTabSel" } }
+    end
+    local icon = M.get_status_icon(current_session.status)
+    local text = string.format(
+      " %s[%s] %s %s ",
+      ui_opts.title or "Agent Session",
+      current_session.name,
+      icon,
+      current_session.status
+    )
+    return { { text, "AgentSessionTabSel" } }
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    local base_title = ui_opts.title or " Agent Session "
+    return { { base_title, "AgentSessionTabSel" } }
+  end
+
+  local chunks = {}
+  table.insert(chunks, { " ", "Normal" })
+
+  for i, s in ipairs(ordered) do
+    if i > 1 then
+      table.insert(chunks, { "│", "AgentSessionTabDivider" })
+    end
+
+    local icon = M.get_status_icon(s.status)
+    local is_active = current_session and (s.id == current_session.id)
+    if is_active then
+      local tab_text = string.format(" [ %s %d:%s ] ", icon, i, s.name)
+      table.insert(chunks, { tab_text, "AgentSessionTabSel" })
+    else
+      local tab_text = string.format(" %s %d:%s ", icon, i, s.name)
+      table.insert(chunks, { tab_text, "AgentSessionTab" })
+    end
+  end
+
+  table.insert(chunks, { " ", "Normal" })
+  return chunks
+end
+
+---Format winbar string for split window
+---@param current_session? Session
+---@return string
+function M.format_winbar(current_session)
+  setup_tab_highlights()
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+
+  if ui_opts.tabbar == false then
+    if not current_session then
+      return "%=" .. (ui_opts.title or " Agent Session ") .. "%="
+    end
+    local icon = M.get_status_icon(current_session.status)
+    local text = string.format(
+      " %s[%s] %s %s ",
+      ui_opts.title or "Agent Session",
+      current_session.name,
+      icon,
+      current_session.status
+    )
+    return "%=" .. text .. "%="
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    local base_title = ui_opts.title or " Agent Session "
+    return "%=" .. base_title .. "%="
+  end
+
+  local parts = {}
+  for i, s in ipairs(ordered) do
+    if i > 1 then
+      table.insert(parts, "%#AgentSessionTabDivider#│")
+    end
+
+    local icon = M.get_status_icon(s.status)
+    local is_active = current_session and (s.id == current_session.id)
+    if is_active then
+      table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon, i, s.name))
+    else
+      table.insert(parts, string.format("%%#AgentSessionTab# %s %d:%s ", icon, i, s.name))
+    end
+  end
+
+  return "%=" .. table.concat(parts, "") .. "%#Normal#%="
+end
+
+---Format plain string title for session window
+---@param session? Session
 ---@return string
 function M.format_title(session)
   local opts = config.get()
   local ui_opts = opts.ui or {}
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
-  local icon = icons[session.status] or ""
-  local base_title = ui_opts.title or " Agent Session "
 
-  return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
+  if ui_opts.tabbar == false then
+    if not session then
+      return ui_opts.title or " Agent Session "
+    end
+    local icon = M.get_status_icon(session.status)
+    local base_title = ui_opts.title or " Agent Session "
+    return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    return ui_opts.title or " Agent Session "
+  end
+
+  local parts = {}
+  for i, s in ipairs(ordered) do
+    local icon = M.get_status_icon(s.status)
+    local is_active = session and (s.id == session.id)
+    if is_active then
+      table.insert(parts, string.format("[%s %d:%s]", icon, i, s.name))
+    else
+      table.insert(parts, string.format("%s %d:%s", icon, i, s.name))
+    end
+  end
+
+  return " " .. table.concat(parts, " │ ") .. " "
 end
 
 ---Refresh title and winbar when status updates
 ---@param session? Session
 function M.refresh_title(session)
-  if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+  local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+  local sb_open = ok_sb and sidebar_mod.is_open and sidebar_mod.is_open()
+  local win_open = M._current_win and vim.api.nvim_win_is_valid(M._current_win)
+
+  if not win_open and not sb_open then
+    M._stop_spinner()
     return
   end
 
-  local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
-  local win_session = session_mod.get_by_bufnr(cur_buf)
+  if win_open then
+    local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+    local win_session = session_mod.get_by_bufnr(cur_buf)
+    local active_session = win_session or session or session_mod.get_current()
 
-  if session then
-    if not win_session or win_session.id ~= session.id then
-      return
+    local opts = config.get()
+    local ui_opts = opts.ui or {}
+
+    if ui_opts.position == "float" then
+      local chunks = M.format_float_title_chunks(active_session)
+      pcall(vim.api.nvim_win_set_config, M._current_win, {
+        title = chunks,
+        title_pos = "center",
+      })
+    else
+      local winbar_str = M.format_winbar(active_session)
+      pcall(function()
+        vim.wo[M._current_win].winbar = winbar_str
+      end)
     end
-  else
-    session = win_session or session_mod.get_current()
   end
 
-  if not session then
-    return
-  end
-
-  local opts = config.get()
-  local ui_opts = opts.ui or {}
-  local title = M.format_title(session)
-
-  if ui_opts.position == "float" then
-    pcall(vim.api.nvim_win_set_config, M._current_win, {
-      title = title,
-      title_pos = "center",
-    })
+  if has_running_session() then
+    M._start_spinner()
   else
-    pcall(function()
-      vim.wo[M._current_win].winbar = "%=" .. title .. "%="
-    end)
+    M._stop_spinner()
   end
 end
 
@@ -170,20 +391,33 @@ end
 
 ---Restore saved view and mode for a session in M._current_win
 ---@param session Session
----@param focus_input? boolean Force terminal insert mode
-local function restore_session_view_and_mode(session, focus_input)
+---@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean }
+local function restore_session_view_and_mode(session, open_opts)
   if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
     return
   end
 
+  open_opts = open_opts or {}
   local opts = config.get()
   local ui_opts = opts.ui or {}
   local restore_enabled = ui_opts.restore_view ~= false
 
   vim.api.nvim_set_current_win(M._current_win)
 
-  if focus_input then
+  if open_opts.focus_input then
     vim.cmd("startinsert")
+    return
+  end
+
+  if open_opts.stay_in_normal then
+    vim.cmd("stopinsert")
+    if restore_enabled and session._saved_view then
+      pcall(function()
+        vim.api.nvim_win_call(M._current_win, function()
+          vim.fn.winrestview(session._saved_view)
+        end)
+      end)
+    end
     return
   end
 
@@ -204,7 +438,7 @@ end
 
 ---Open a session in window
 ---@param session Session
----@param open_opts? { focus_input?: boolean }
+---@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean }
 function M.open(session, open_opts)
   if not session or not vim.api.nvim_buf_is_valid(session.bufnr) then
     vim.notify("[agent-session] Invalid session buffer", vim.log.levels.ERROR)
@@ -223,7 +457,7 @@ function M.open(session, open_opts)
     apply_win_options(M._current_win)
     session_mod.set_current(session.id)
     M.refresh_title(session)
-    restore_session_view_and_mode(session, open_opts.focus_input)
+    restore_session_view_and_mode(session, open_opts)
     return
   end
 
@@ -244,7 +478,7 @@ function M.open(session, open_opts)
   else
     -- Default: float
     local float_opts = get_float_dims(ui_opts)
-    float_opts.title = M.format_title(session)
+    float_opts.title = M.format_float_title_chunks(session)
     float_opts.title_pos = "center"
 
     local win = vim.api.nvim_open_win(session.bufnr, true, float_opts)
@@ -262,18 +496,19 @@ function M.open(session, open_opts)
     callback = function()
       if M._current_win == cur_win then
         M.save_current_view()
+        M._stop_spinner()
         M._current_win = nil
       end
     end,
   })
 
   session_mod.set_current(session.id)
-  restore_session_view_and_mode(session, open_opts.focus_input)
+  restore_session_view_and_mode(session, open_opts)
 
   -- Map q to hide window in normal mode
   vim.keymap.set("n", "q", function()
     M.close_window()
-  end, { buffer = session.bufnr, nowait = true, silent = true })
+  end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Hide agent session window" })
 
   -- Map R to rename this session (normal mode only, doesn't interfere with terminal input)
   vim.keymap.set("n", "R", function()
@@ -282,13 +517,62 @@ function M.open(session, open_opts)
         session_mod.rename(session.id, new_name)
       end
     end)
-  end, { buffer = session.bufnr, nowait = true, silent = true })
+  end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Rename agent session" })
+
+  -- Buffer-local navigation keymaps (normal mode) to cycle between sessions like buffer tabs
+  local function map_cycle(lhs, dir)
+    vim.keymap.set("n", lhs, function()
+      require("agent-session").cycle_session(dir, { stay_in_normal = true })
+    end, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = dir > 0 and "Next agent session" or "Previous agent session",
+    })
+  end
+
+  map_cycle("]b", 1)
+  map_cycle("[b", -1)
+  map_cycle("]s", 1)
+  map_cycle("[s", -1)
+  map_cycle("]a", 1)
+  map_cycle("[a", -1)
+
+  -- Jump to session by index (1..9, 1gt..9gt, ]1..]9)
+  for i = 1, 9 do
+    local idx = i
+    local function do_jump()
+      require("agent-session").goto_session(idx, { stay_in_normal = true })
+    end
+
+    vim.keymap.set("n", string.format("%dgt", idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+
+    vim.keymap.set("n", string.format("]%d", idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+
+    vim.keymap.set("n", tostring(idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+  end
 end
 
 ---Close current UI window (without killing the session)
 function M.close_window()
   if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
     M.save_current_view()
+    M._stop_spinner()
     vim.api.nvim_win_close(M._current_win, true)
     M._current_win = nil
   end
@@ -371,7 +655,7 @@ function M.select_session(on_select, opts_or_prompt)
   local session_lookup = {}
 
   for _, sess in ipairs(sorted_sessions) do
-    local icon = icons[sess.status] or "•"
+    local icon = M.get_status_icon(sess.status)
     local is_current = cur_sess and cur_sess.id == sess.id
     local prefix = is_current and "➜ " or "  "
     local label = string.format("%s[%s %s] %s (%s) - %s", prefix, icon, sess.status, sess.name, sess.agent, sess.id)
