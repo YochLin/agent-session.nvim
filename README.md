@@ -52,14 +52,14 @@ return {
     "AgentSessionSendFileTo",
   },
   keys = {
-    { "<leader>at", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session Window" },
-    { "<leader>az", "<cmd>AgentSessionZoom<cr>", desc = "Toggle Center Full / Side View" },
-    { "<leader>ae", "<cmd>AgentSessionSidebar<cr>", desc = "Toggle Agent Explorer (Sidebar)" },
+    { "<leader>at", "<cmd>AgentSessionToggle<cr>", mode = { "n", "t" }, desc = "Toggle Agent Session Window" },
+    { "<leader>az", "<cmd>AgentSessionZoom<cr>", mode = { "n", "t" }, desc = "Toggle Center Full / Side View" },
+    { "<leader>ae", "<cmd>AgentSessionSidebar<cr>", mode = { "n", "t" }, desc = "Toggle Agent Explorer (Sidebar)" },
     { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session (Interactive)" },
     { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },
     { "<leader>al", "<cmd>AgentSessionList<cr>", desc = "List Active Sessions" },
-    { "]a", "<cmd>AgentSessionNext<cr>", desc = "Next Agent Session" },
-    { "[a", "<cmd>AgentSessionPrev<cr>", desc = "Previous Agent Session" },
+    { "]a", "<cmd>AgentSessionNext<cr>", mode = { "n", "t" }, desc = "Next Agent Session" },
+    { "[a", "<cmd>AgentSessionPrev<cr>", mode = { "n", "t" }, desc = "Previous Agent Session" },
     { "<leader>ap", "<cmd>AgentSessionPrompt<cr>", desc = "Prompt / Command Target Session" },
     { "<leader>aP", "<cmd>AgentSessionPipe<cr>", mode = { "n", "v" }, desc = "Pipe Output to Target Session" },
     { "<leader>ar", "<cmd>AgentSessionRename<cr>", desc = "Rename Session" },
@@ -81,6 +81,10 @@ return {
       height = 0.8,
       border = "rounded",
       title = " Agent Session ",
+      terminal_mappings = {
+        enabled = true,
+        escape = "<C-\\><C-\\>", -- Double Ctrl-\ to exit terminal mode back to normal mode safely
+      },
     },
     sidebar = {
       position = "auto", -- "auto" (bottom-left under neo-tree), "left", "bottom-left"
@@ -143,6 +147,10 @@ require("agent-session").setup({
     height = 0.8,
     border = "rounded",
     title = " Agent Session ",
+    terminal_mappings = {
+      enabled = true,
+      escape = "<C-\\><C-\\>", -- Double Ctrl-\ to exit terminal mode back to normal mode safely
+    },
   },
   idle_timeout = 800, -- Milliseconds of silence before marking session as idle
   notify_on_idle = true, -- Notify when a background session finishes task
@@ -192,16 +200,24 @@ require("agent-session").setup({
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
 | `:AgentSession status [idle|running]` | Check or set current session status |
 
-### 🔀 Session Window Keymaps & Tab Navigation (Normal Mode)
+### 🔀 Session Window Keymaps & Keyboard Controls
 
-When inside an Agent Session window in Normal mode (`<C-\><C-n>` to leave terminal input mode):
+#### ⚡ Terminal Input Mode (`t` mode)
+When typing inside an Agent Session window:
 
-- `z` / `Z` / `<C-w>z` / `<C-w>m` : **Toggle Zoom** (switch between Center Full Float and Right Side Split)
+- `<C-\><C-\>` : **Exit Terminal Mode** directly to Normal Mode (**100% safe, never sends `Esc`, never stops running agents**)
+- Global keymaps (e.g. `<C-t>` / `<leader>az`) configured with `mode = { "n", "t" }` can be triggered directly in 1 step from terminal mode!
+
+#### 🛋️ Normal Mode (`n` mode)
+When in Normal mode inside an Agent Session window:
+
+- `z` / `Z` / `<C-w>z` / `<C-w>m` : **Toggle Zoom** (Center Full Float ⟷ Side Split)
+- `q` / `<Esc>` : **Hide / Close** session window
 - `]b` / `]s` / `]a` : Cycle to **Next** Agent Session
 - `[b` / `[s` / `[a` : Cycle to **Previous** Agent Session
 - `1` ~ `9` / `1gt` ~ `9gt` / `]1` ~ `]9` : Jump directly to Session Tab **1 ~ 9**
 - `R` : Rename current session
-- `q` : Hide / close session window (keeps process running in background)
+- `i` / `a` / `<CR>` : Enter Terminal Input Mode
 
 ---
 

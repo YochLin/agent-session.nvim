@@ -4,10 +4,42 @@ local ui = require("agent-session.ui")
 
 local M = {}
 
+---Initialize global keymaps if configured
+function M._setup_keymaps()
+  local opts = config.get()
+  local maps = opts.keymaps or {}
+  if maps.toggle then
+    vim.keymap.set({ "n", "t" }, maps.toggle, function()
+      M.toggle()
+    end, { silent = true, desc = "Toggle Agent Session Window" })
+  end
+  if maps.zoom then
+    vim.keymap.set({ "n", "t" }, maps.zoom, function()
+      M.toggle_zoom()
+    end, { silent = true, desc = "Toggle Center Full / Side View" })
+  end
+  if maps.sidebar then
+    vim.keymap.set({ "n", "t" }, maps.sidebar, function()
+      M.toggle_sidebar()
+    end, { silent = true, desc = "Toggle Agent Explorer (Sidebar)" })
+  end
+  if maps.next then
+    vim.keymap.set({ "n", "t" }, maps.next, function()
+      M.next_session()
+    end, { silent = true, desc = "Next Agent Session" })
+  end
+  if maps.prev then
+    vim.keymap.set({ "n", "t" }, maps.prev, function()
+      M.prev_session()
+    end, { silent = true, desc = "Previous Agent Session" })
+  end
+end
+
 ---Initialize agent-session.nvim with user configuration
 ---@param opts? AgentSessionConfig
 function M.setup(opts)
   config.setup(opts)
+  M._setup_keymaps()
 end
 
 ---Create a new agent session and open its UI
