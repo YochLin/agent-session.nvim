@@ -81,7 +81,7 @@ function M.cycle_session(direction, opts)
   if #list == 1 then
     local single = list[1]
     ui.open(single, opts)
-    if opts.notify ~= false then
+    if opts.notify == true then
       vim.notify(
         string.format("[agent-session] Active session: '%s' (%s) [1/1]", single.name, single.agent),
         vim.log.levels.INFO
@@ -113,7 +113,7 @@ function M.cycle_session(direction, opts)
   local target = list[next_idx]
   ui.open(target, opts)
 
-  if opts.notify ~= false then
+  if opts.notify == true then
     local cfg = config.get()
     local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
     local icon = icons[target.status] or ""
@@ -152,6 +152,7 @@ end
 ---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
 ---@return Session|nil
 function M.goto_session(index, opts)
+  opts = opts or {}
   session.sync_all()
   local list = session.get_ordered()
   if #list == 0 then
@@ -170,7 +171,7 @@ function M.goto_session(index, opts)
   local target = list[index]
   ui.open(target, opts)
 
-  if opts and opts.notify ~= false then
+  if opts.notify == true then
     local cfg = config.get()
     local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
     local icon = icons[target.status] or ""

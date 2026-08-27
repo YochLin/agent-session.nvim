@@ -3,10 +3,16 @@
 ---@field default_agent? string Default agent type (e.g. "claude", "custom")
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
+---@field spinner? AgentSessionSpinnerConfig Animated spinner settings
 ---@field hooks? table<string, fun(session: table)> Lifecycle hooks
 ---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field notify_on_exit? boolean Notify when a background session exits (default: true)
 ---@field notifications? AgentSessionNotificationConfig Notification settings
+
+---@class AgentSessionSpinnerConfig
+---@field enabled? boolean Enable animated spinner for running sessions (default: true)
+---@field interval? number Milliseconds between animation frames (default: 80)
+---@field frames? string[] Animation frame characters
 
 ---@class AgentSessionNotificationConfig
 ---@field enabled? boolean Enable/disable all notifications (default: true)
@@ -73,6 +79,11 @@ M.defaults = {
     position = "auto", -- "auto" (bottom-left under neo-tree if open, else left), "left", "bottom-left"
     width = 0.20, -- percentage (0.20 = 20% width) or fixed columns (e.g. 30)
     height = 0.35, -- percentage (0.35 = 35% height) or fixed lines (e.g. 12)
+  },
+  spinner = {
+    enabled = true,
+    interval = 80, -- ms between frames
+    frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
   },
   idle_timeout = 800, -- Milliseconds of silence before marking session as idle
   notify_on_idle = true, -- Notify when a background session transitions to idle

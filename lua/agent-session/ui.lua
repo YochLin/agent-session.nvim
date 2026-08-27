@@ -1,10 +1,86 @@
 local config = require("agent-session.config")
 local session_mod = require("agent-session.session")
+local uv = vim.uv or vim.loop
 
 local M = {}
 
 ---@type number|nil
 M._current_win = nil
+---@type userdata|nil
+M._spinner_timer = nil
+---@type integer
+M._spinner_frame_idx = 1
+
+---Check if any active session is currently running
+---@return boolean
+local function has_running_session()
+  local all = session_mod.get_all()
+  for _, s in pairs(all) do
+    if s.status == "running" then
+      return true
+    end
+  end
+  return false
+end
+
+---Get status icon for a session (with animated spinner if running)
+---@param status "running"|"idle"|"stopped"
+---@return string
+function M.get_status_icon(status)
+  local opts = config.get()
+  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+  local spinner_cfg = opts.spinner or {}
+
+  if status == "running" and spinner_cfg.enabled ~= false then
+    local frames = spinner_cfg.frames or { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+    local idx = ((M._spinner_frame_idx - 1) % #frames) + 1
+    return frames[idx]
+  end
+
+  return icons[status] or "•"
+end
+
+---Start animated spinner timer (only when running sessions exist and UI window is open)
+function M._start_spinner()
+  local opts = config.get()
+  local spinner_cfg = opts.spinner or {}
+  if spinner_cfg.enabled == false then
+    return
+  end
+
+  if M._spinner_timer and not M._spinner_timer:is_closing() then
+    return
+  end
+
+  M._spinner_timer = uv.new_timer()
+  local interval = spinner_cfg.interval or 80
+  M._spinner_timer:start(
+    interval,
+    interval,
+    vim.schedule_wrap(function()
+      if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) or not has_running_session() then
+        M._stop_spinner()
+        return
+      end
+
+      local frames = (config.get().spinner and config.get().spinner.frames)
+        or { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+      M._spinner_frame_idx = (M._spinner_frame_idx % #frames) + 1
+      M.refresh_title()
+    end)
+  )
+end
+
+---Stop animated spinner timer
+function M._stop_spinner()
+  if M._spinner_timer then
+    if not M._spinner_timer:is_closing() then
+      M._spinner_timer:stop()
+      M._spinner_timer:close()
+    end
+    M._spinner_timer = nil
+  end
+end
 
 ---Calculate floating window dimensions
 ---@param ui_opts AgentSessionUIConfig
@@ -95,13 +171,12 @@ function M.format_float_title_chunks(current_session)
   setup_tab_highlights()
   local opts = config.get()
   local ui_opts = opts.ui or {}
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
 
   if ui_opts.tabbar == false then
     if not current_session then
       return { { ui_opts.title or " Agent Session ", "AgentSessionTabSel" } }
     end
-    local icon = icons[current_session.status] or ""
+    local icon = M.get_status_icon(current_session.status)
     local text = string.format(
       " %s[%s] %s %s ",
       ui_opts.title or "Agent Session",
@@ -126,7 +201,7 @@ function M.format_float_title_chunks(current_session)
       table.insert(chunks, { "│", "AgentSessionTabDivider" })
     end
 
-    local icon = icons[s.status] or "•"
+    local icon = M.get_status_icon(s.status)
     local is_active = current_session and (s.id == current_session.id)
     if is_active then
       local tab_text = string.format(" [ %s %d:%s ] ", icon, i, s.name)
@@ -148,13 +223,12 @@ function M.format_winbar(current_session)
   setup_tab_highlights()
   local opts = config.get()
   local ui_opts = opts.ui or {}
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
 
   if ui_opts.tabbar == false then
     if not current_session then
       return "%=" .. (ui_opts.title or " Agent Session ") .. "%="
     end
-    local icon = icons[current_session.status] or ""
+    local icon = M.get_status_icon(current_session.status)
     local text = string.format(
       " %s[%s] %s %s ",
       ui_opts.title or "Agent Session",
@@ -177,7 +251,7 @@ function M.format_winbar(current_session)
       table.insert(parts, "%#AgentSessionTabDivider#│")
     end
 
-    local icon = icons[s.status] or "•"
+    local icon = M.get_status_icon(s.status)
     local is_active = current_session and (s.id == current_session.id)
     if is_active then
       table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon, i, s.name))
@@ -195,13 +269,12 @@ end
 function M.format_title(session)
   local opts = config.get()
   local ui_opts = opts.ui or {}
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
 
   if ui_opts.tabbar == false then
     if not session then
       return ui_opts.title or " Agent Session "
     end
-    local icon = icons[session.status] or ""
+    local icon = M.get_status_icon(session.status)
     local base_title = ui_opts.title or " Agent Session "
     return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
   end
@@ -213,7 +286,7 @@ function M.format_title(session)
 
   local parts = {}
   for i, s in ipairs(ordered) do
-    local icon = icons[s.status] or "•"
+    local icon = M.get_status_icon(s.status)
     local is_active = session and (s.id == session.id)
     if is_active then
       table.insert(parts, string.format("[%s %d:%s]", icon, i, s.name))
@@ -229,6 +302,7 @@ end
 ---@param session? Session
 function M.refresh_title(session)
   if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+    M._stop_spinner()
     return
   end
 
@@ -250,6 +324,12 @@ function M.refresh_title(session)
     pcall(function()
       vim.wo[M._current_win].winbar = winbar_str
     end)
+  end
+
+  if has_running_session() then
+    M._start_spinner()
+  else
+    M._stop_spinner()
   end
 end
 
@@ -399,6 +479,7 @@ function M.open(session, open_opts)
     callback = function()
       if M._current_win == cur_win then
         M.save_current_view()
+        M._stop_spinner()
         M._current_win = nil
       end
     end,
@@ -474,6 +555,7 @@ end
 function M.close_window()
   if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
     M.save_current_view()
+    M._stop_spinner()
     vim.api.nvim_win_close(M._current_win, true)
     M._current_win = nil
   end
