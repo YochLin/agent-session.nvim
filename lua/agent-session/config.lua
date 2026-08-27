@@ -24,6 +24,7 @@
 ---@field border? string Border style ("rounded", "single", "double", "solid", "shadow", "none")
 ---@field title? string Title for session window
 ---@field position? "float"|"split"|"vsplit" Window position
+---@field tabbar? boolean Show session tab bar at top of window (default: true)
 ---@field restore_view? boolean Preserve scroll position and cursor line when switching sessions (default: true)
 
 local M = {}
@@ -65,6 +66,7 @@ M.defaults = {
     height = 0.8,
     border = "rounded",
     title = " Agent Session ",
+    tabbar = true, -- Show session tab bar at top of window
     restore_view = true, -- Preserve scroll position and normal/terminal mode across session switches
   },
   sidebar = {

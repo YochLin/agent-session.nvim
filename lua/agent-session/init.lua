@@ -147,6 +147,42 @@ function M.prev_session(opts)
   return M.cycle_session(-1, opts)
 end
 
+---Switch directly to the agent session at the given 1-based index (e.g. from tab bar number)
+---@param index integer
+---@param opts? { stay_in_normal?: boolean, focus_input?: boolean, notify?: boolean }
+---@return Session|nil
+function M.goto_session(index, opts)
+  session.sync_all()
+  local list = session.get_ordered()
+  if #list == 0 then
+    vim.notify("[agent-session] No active sessions found. Create one with :AgentSessionNew", vim.log.levels.WARN)
+    return nil
+  end
+
+  if not list[index] then
+    vim.notify(
+      string.format("[agent-session] No session at index %d (active sessions: %d)", index, #list),
+      vim.log.levels.WARN
+    )
+    return nil
+  end
+
+  local target = list[index]
+  ui.open(target, opts)
+
+  if opts and opts.notify ~= false then
+    local cfg = config.get()
+    local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    local icon = icons[target.status] or ""
+    vim.notify(
+      string.format("[agent-session] Switched to '%s' [%s %s] (%d/%d)", target.name, icon, target.status, index, #list),
+      vim.log.levels.INFO
+    )
+  end
+
+  return target
+end
+
 ---Send prompt / command text to active session
 ---@param text string
 function M.send(text)

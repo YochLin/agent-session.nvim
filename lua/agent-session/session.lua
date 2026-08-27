@@ -623,6 +623,17 @@ function M.delete(id)
   if M._current_session_id == id then
     M._current_session_id = next(M._active_sessions)
   end
+
+  vim.schedule(function()
+    local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+    if ok_ui and ui_mod.refresh_title then
+      ui_mod.refresh_title()
+    end
+    local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+    if ok_sb and sidebar_mod.render then
+      sidebar_mod.render()
+    end
+  end)
 end
 
 return M

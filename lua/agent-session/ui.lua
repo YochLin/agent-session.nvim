@@ -78,17 +78,151 @@ local function apply_win_options(win)
   end
 end
 
----Format title for session window
----@param session Session
+---Setup syntax highlights for tabs
+local function setup_tab_highlights()
+  vim.api.nvim_set_hl(0, "AgentSessionTab", { link = "TabLine", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabSel", { link = "TabLineSel", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabDivider", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabRunning", { fg = "#f1fa8c", bold = true, default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabIdle", { fg = "#50fa7b", default = true })
+  vim.api.nvim_set_hl(0, "AgentSessionTabStopped", { fg = "#6272a4", default = true })
+end
+
+---Format title chunks for floating window
+---@param current_session? Session
+---@return table chunks
+function M.format_float_title_chunks(current_session)
+  setup_tab_highlights()
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+
+  if ui_opts.tabbar == false then
+    if not current_session then
+      return { { ui_opts.title or " Agent Session ", "AgentSessionTabSel" } }
+    end
+    local icon = icons[current_session.status] or ""
+    local text = string.format(
+      " %s[%s] %s %s ",
+      ui_opts.title or "Agent Session",
+      current_session.name,
+      icon,
+      current_session.status
+    )
+    return { { text, "AgentSessionTabSel" } }
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    local base_title = ui_opts.title or " Agent Session "
+    return { { base_title, "AgentSessionTabSel" } }
+  end
+
+  local chunks = {}
+  table.insert(chunks, { " ", "Normal" })
+
+  for i, s in ipairs(ordered) do
+    if i > 1 then
+      table.insert(chunks, { "│", "AgentSessionTabDivider" })
+    end
+
+    local icon = icons[s.status] or "•"
+    local is_active = current_session and (s.id == current_session.id)
+    if is_active then
+      local tab_text = string.format(" [ %s %d:%s ] ", icon, i, s.name)
+      table.insert(chunks, { tab_text, "AgentSessionTabSel" })
+    else
+      local tab_text = string.format(" %s %d:%s ", icon, i, s.name)
+      table.insert(chunks, { tab_text, "AgentSessionTab" })
+    end
+  end
+
+  table.insert(chunks, { " ", "Normal" })
+  return chunks
+end
+
+---Format winbar string for split window
+---@param current_session? Session
+---@return string
+function M.format_winbar(current_session)
+  setup_tab_highlights()
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+
+  if ui_opts.tabbar == false then
+    if not current_session then
+      return "%=" .. (ui_opts.title or " Agent Session ") .. "%="
+    end
+    local icon = icons[current_session.status] or ""
+    local text = string.format(
+      " %s[%s] %s %s ",
+      ui_opts.title or "Agent Session",
+      current_session.name,
+      icon,
+      current_session.status
+    )
+    return "%=" .. text .. "%="
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    local base_title = ui_opts.title or " Agent Session "
+    return "%=" .. base_title .. "%="
+  end
+
+  local parts = {}
+  for i, s in ipairs(ordered) do
+    if i > 1 then
+      table.insert(parts, "%#AgentSessionTabDivider#│")
+    end
+
+    local icon = icons[s.status] or "•"
+    local is_active = current_session and (s.id == current_session.id)
+    if is_active then
+      table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon, i, s.name))
+    else
+      table.insert(parts, string.format("%%#AgentSessionTab# %s %d:%s ", icon, i, s.name))
+    end
+  end
+
+  return "%=" .. table.concat(parts, "") .. "%#Normal#%="
+end
+
+---Format plain string title for session window
+---@param session? Session
 ---@return string
 function M.format_title(session)
   local opts = config.get()
   local ui_opts = opts.ui or {}
   local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
-  local icon = icons[session.status] or ""
-  local base_title = ui_opts.title or " Agent Session "
 
-  return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
+  if ui_opts.tabbar == false then
+    if not session then
+      return ui_opts.title or " Agent Session "
+    end
+    local icon = icons[session.status] or ""
+    local base_title = ui_opts.title or " Agent Session "
+    return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
+  end
+
+  local ordered = session_mod.get_ordered()
+  if #ordered == 0 then
+    return ui_opts.title or " Agent Session "
+  end
+
+  local parts = {}
+  for i, s in ipairs(ordered) do
+    local icon = icons[s.status] or "•"
+    local is_active = session and (s.id == session.id)
+    if is_active then
+      table.insert(parts, string.format("[%s %d:%s]", icon, i, s.name))
+    else
+      table.insert(parts, string.format("%s %d:%s", icon, i, s.name))
+    end
+  end
+
+  return " " .. table.concat(parts, " │ ") .. " "
 end
 
 ---Refresh title and winbar when status updates
@@ -100,31 +234,21 @@ function M.refresh_title(session)
 
   local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
   local win_session = session_mod.get_by_bufnr(cur_buf)
-
-  if session then
-    if not win_session or win_session.id ~= session.id then
-      return
-    end
-  else
-    session = win_session or session_mod.get_current()
-  end
-
-  if not session then
-    return
-  end
+  local active_session = win_session or session or session_mod.get_current()
 
   local opts = config.get()
   local ui_opts = opts.ui or {}
-  local title = M.format_title(session)
 
   if ui_opts.position == "float" then
+    local chunks = M.format_float_title_chunks(active_session)
     pcall(vim.api.nvim_win_set_config, M._current_win, {
-      title = title,
+      title = chunks,
       title_pos = "center",
     })
   else
+    local winbar_str = M.format_winbar(active_session)
     pcall(function()
-      vim.wo[M._current_win].winbar = "%=" .. title .. "%="
+      vim.wo[M._current_win].winbar = winbar_str
     end)
   end
 end
@@ -257,7 +381,7 @@ function M.open(session, open_opts)
   else
     -- Default: float
     local float_opts = get_float_dims(ui_opts)
-    float_opts.title = M.format_title(session)
+    float_opts.title = M.format_float_title_chunks(session)
     float_opts.title_pos = "center"
 
     local win = vim.api.nvim_open_win(session.bufnr, true, float_opts)
@@ -315,6 +439,35 @@ function M.open(session, open_opts)
   map_cycle("[s", -1)
   map_cycle("]a", 1)
   map_cycle("[a", -1)
+
+  -- Jump to session by index (1..9, 1gt..9gt, ]1..]9)
+  for i = 1, 9 do
+    local idx = i
+    local function do_jump()
+      require("agent-session").goto_session(idx, { stay_in_normal = true })
+    end
+
+    vim.keymap.set("n", string.format("%dgt", idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+
+    vim.keymap.set("n", string.format("]%d", idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+
+    vim.keymap.set("n", tostring(idx), do_jump, {
+      buffer = session.bufnr,
+      nowait = true,
+      silent = true,
+      desc = string.format("Jump to agent session %d", idx),
+    })
+  end
 end
 
 ---Close current UI window (without killing the session)

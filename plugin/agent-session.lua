@@ -36,6 +36,15 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     agent_session.next_session()
   elseif subcmd == "prev" or subcmd == "previous" then
     agent_session.prev_session()
+  elseif subcmd == "goto" then
+    local idx = tonumber(args[2])
+    if idx then
+      agent_session.goto_session(idx)
+    else
+      vim.notify("[agent-session] Please specify a session index (e.g. :AgentSession goto 1)", vim.log.levels.WARN)
+    end
+  elseif tonumber(subcmd) then
+    agent_session.goto_session(tonumber(subcmd))
   elseif subcmd == "status" then
     if args[2] then
       agent_session.set_status(args[2], args[3])
@@ -74,6 +83,7 @@ end, {
       "list",
       "next",
       "prev",
+      "goto",
       "status",
       "agent",
       "sidebar",
@@ -127,6 +137,15 @@ end, { desc = "Switch to next agent session" })
 vim.api.nvim_create_user_command("AgentSessionPrev", function()
   agent_session.prev_session()
 end, { desc = "Switch to previous agent session" })
+
+vim.api.nvim_create_user_command("AgentSessionGoto", function(opts)
+  local idx = tonumber(opts.args)
+  if idx then
+    agent_session.goto_session(idx)
+  else
+    vim.notify("[agent-session] Please specify a session index (e.g. :AgentSessionGoto 1)", vim.log.levels.WARN)
+  end
+end, { nargs = 1, desc = "Switch to agent session by index number (e.g. :AgentSessionGoto 1)" })
 
 vim.api.nvim_create_user_command("AgentSessionNew", function(opts)
   local args = vim.split(opts.args, "%s+", { trimempty = true })

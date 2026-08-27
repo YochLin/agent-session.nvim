@@ -7,6 +7,7 @@ A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g.
 ## ✨ Features
 
 - ⚡ **Multi-Session Management**: Run and track multiple background AI agent processes.
+- 📑 **Interactive Session Tab Bar**: Browser-like tab bar at the top of the window showing all active sessions, status icons (⚡/🟢/⚪), and highlighting the active session.
 - 🎯 **Targeted Prompting & Session Dispatch**: Send prompts or commands to specific agents by friendly name or interactive picker without switching contexts.
 - 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
 - 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
@@ -31,6 +32,7 @@ return {
     "AgentSessionToggle",
     "AgentSessionNext",
     "AgentSessionPrev",
+    "AgentSessionGoto",
     "AgentSessionSidebar",
     "AgentSessionTree",
     "AgentSessionNew",
@@ -166,6 +168,7 @@ require("agent-session").setup({
 | `:AgentSession` / `:AgentSessionToggle` | Toggle current active session window |
 | `:AgentSessionNext` / `:AgentSession next` | Switch to next agent session (chronological order) |
 | `:AgentSessionPrev` / `:AgentSession prev` | Switch to previous agent session |
+| `:AgentSessionGoto [N]` / `:AgentSession [N]` | Jump directly to agent session by tab index number |
 | `:AgentSessionNew [agent\|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
 | `:AgentSessionSelectAgent` | Open interactive picker to choose which agent to launch |
 | `:AgentSessionList` | Open interactive session picker to switch active session |
@@ -180,12 +183,13 @@ require("agent-session").setup({
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
 | `:AgentSession status [idle\|running]` | Check or set current session status |
 
-### 🔀 Session Window Keymaps (Normal Mode)
+### 🔀 Session Window Keymaps & Tab Navigation (Normal Mode)
 
 When inside an Agent Session window in Normal mode (`<C-\><C-n>` to leave terminal input mode):
 
 - `]b` / `]s` / `]a` : Cycle to **Next** Agent Session
 - `[b` / `[s` / `[a` : Cycle to **Previous** Agent Session
+- `1` ~ `9` / `1gt` ~ `9gt` / `]1` ~ `]9` : Jump directly to Session Tab **1 ~ 9**
 - `R` : Rename current session
 - `q` : Hide / close session window (keeps process running in background)
 
