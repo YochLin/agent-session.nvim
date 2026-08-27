@@ -18,6 +18,8 @@
 ---@field enabled? boolean Enable/disable all notifications (default: true)
 ---@field on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field on_exit? boolean Notify when a background session exits (default: true)
+---@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 2500, suppresses subagent/tool pause flickers)
+---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 5000)
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
@@ -25,8 +27,12 @@
 ---@field args? string[] Additional CLI arguments
 
 ---@class AgentSessionUIConfig
----@field width? number Float width (0-1 float or integer)
----@field height? number Float height (0-1 float or integer)
+---@field width? number Default width (0-1 float or integer)
+---@field height? number Default height (0-1 float or integer)
+---@field float_width? number Center float/zoom width (0-1 float or integer, default: 0.85)
+---@field float_height? number Center float/zoom height (0-1 float or integer, default: 0.85)
+---@field split_width? number Side split width (0-1 float or integer, default: 0.35)
+---@field split_height? number Bottom split height (0-1 float or integer, default: 0.30)
 ---@field border? string Border style ("rounded", "single", "double", "solid", "shadow", "none")
 ---@field title? string Title for session window
 ---@field position? "float"|"split"|"vsplit" Window position
@@ -70,6 +76,8 @@ M.defaults = {
     position = "vsplit", -- "float", "split", "vsplit"
     width = 0.35,
     height = 0.8,
+    float_width = 0.85, -- Width when in float / zoom mode
+    float_height = 0.85, -- Height when in float / zoom mode
     border = "rounded",
     title = " Agent Session ",
     tabbar = true, -- Show session tab bar at top of window
@@ -92,6 +100,8 @@ M.defaults = {
     enabled = true,
     on_idle = true,
     on_exit = true,
+    idle_delay = 2500, -- Milliseconds session must remain continuously idle before notifying (avoids subagent flickers)
+    cooldown = 5000, -- Minimum ms between consecutive notifications for the same session
   },
   status_icons = {
     running = "⚡",

@@ -41,6 +41,7 @@ require("lazy").setup({
     end,
     keys = {
       { "<leader>at", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session Window" },
+      { "<leader>az", "<cmd>AgentSessionZoom<cr>", desc = "Toggle Center Full / Side View" },
       { "<leader>ae", "<cmd>AgentSessionSidebar<cr>", desc = "Toggle Agent Explorer (Sidebar)" },
       { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session (Interactive)" },
       { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },

@@ -28,6 +28,8 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
 
   if not subcmd or subcmd == "toggle" then
     agent_session.toggle()
+  elseif subcmd == "zoom" or subcmd == "toggle-zoom" or subcmd == "toggle-layout" or subcmd == "maximize" then
+    agent_session.toggle_zoom()
   elseif subcmd == "new" then
     agent_session.new_session(args[2], args[3])
   elseif subcmd == "list" then
@@ -79,6 +81,10 @@ end, {
     local l = vim.split(line, "%s+", { trimempty = true })
     local subcommands = {
       "toggle",
+      "zoom",
+      "toggle-zoom",
+      "toggle-layout",
+      "maximize",
       "new",
       "list",
       "next",
@@ -130,6 +136,13 @@ vim.api.nvim_create_user_command("AgentSessionToggle", function()
   agent_session.toggle()
 end, { desc = "Toggle agent session window" })
 
+vim.api.nvim_create_user_command("AgentSessionZoom", function()
+  agent_session.toggle_zoom()
+end, { desc = "Toggle between center full (float) screen and side split view" })
+
+vim.api.nvim_create_user_command("AgentSessionToggleZoom", function()
+  agent_session.toggle_zoom()
+end, { desc = "Toggle between center full (float) screen and side split view" })
 vim.api.nvim_create_user_command("AgentSessionNext", function()
   agent_session.next_session()
 end, { desc = "Switch to next agent session" })

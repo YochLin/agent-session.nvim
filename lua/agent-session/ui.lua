@@ -95,10 +95,18 @@ end
 
 ---Calculate floating window dimensions
 ---@param ui_opts AgentSessionUIConfig
+---@param is_zoom? boolean
 ---@return table
-local function get_float_dims(ui_opts)
-  local width = ui_opts.width or 0.85
-  local height = ui_opts.height or 0.8
+local function get_float_dims(ui_opts, is_zoom)
+  local width = ui_opts.float_width
+  if not width then
+    if ui_opts.position == "float" and not is_zoom then
+      width = ui_opts.width or 0.85
+    else
+      width = (ui_opts.width and ui_opts.width > 0.5) and ui_opts.width or 0.85
+    end
+  end
+  local height = ui_opts.float_height or (is_zoom and 0.85) or ui_opts.height or 0.85
 
   if width < 1 then
     width = math.floor(vim.o.columns * width)
@@ -125,8 +133,8 @@ end
 ---@param ui_opts AgentSessionUIConfig
 ---@return number
 local function get_split_width(ui_opts)
-  local width = ui_opts.width
-  if not width or (width == 0.85 and ui_opts.position == "vsplit") then
+  local width = ui_opts.split_width or ui_opts.width
+  if not width or (width >= 0.8 and ui_opts.position == "vsplit") then
     width = 0.35
   end
   if width < 1 then
@@ -139,14 +147,30 @@ end
 ---@param ui_opts AgentSessionUIConfig
 ---@return number
 local function get_split_height(ui_opts)
-  local height = ui_opts.height
-  if not height or (height == 0.8 and ui_opts.position == "split") then
+  local height = ui_opts.split_height or ui_opts.height
+  if not height or (height >= 0.8 and ui_opts.position == "split") then
     height = 0.3
   end
   if height < 1 then
     height = math.floor(vim.o.lines * height)
   end
   return math.max(5, math.floor(height))
+end
+
+---Check if the session window is currently open and valid
+---@return boolean
+function M.is_open()
+  return M._current_win ~= nil and vim.api.nvim_win_is_valid(M._current_win)
+end
+
+---Check if the current session window is a floating window
+---@return boolean
+function M.is_float()
+  if not M.is_open() then
+    return false
+  end
+  local ok, cfg = pcall(vim.api.nvim_win_get_config, M._current_win)
+  return ok and cfg.relative ~= ""
 end
 
 ---Apply clean window options for terminal display
@@ -329,7 +353,7 @@ function M.refresh_title(session)
     local opts = config.get()
     local ui_opts = opts.ui or {}
 
-    if ui_opts.position == "float" then
+    if M.is_float() then
       local chunks = M.format_float_title_chunks(active_session)
       pcall(vim.api.nvim_win_set_config, M._current_win, {
         title = chunks,
@@ -438,7 +462,7 @@ end
 
 ---Open a session in window
 ---@param session Session
----@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean }
+---@param open_opts? { focus_input?: boolean, stay_in_normal?: boolean, position?: "float"|"split"|"vsplit" }
 function M.open(session, open_opts)
   if not session or not vim.api.nvim_buf_is_valid(session.bufnr) then
     vim.notify("[agent-session] Invalid session buffer", vim.log.levels.ERROR)
@@ -448,27 +472,42 @@ function M.open(session, open_opts)
   open_opts = open_opts or {}
   local opts = config.get()
   local ui_opts = opts.ui or {}
+  local target_pos = open_opts.position or ui_opts.position or "vsplit"
 
-  -- If window already exists, bring it to focus and switch buffer
-  if M._current_win and vim.api.nvim_win_is_valid(M._current_win) then
-    M.save_current_view()
-    vim.api.nvim_set_current_win(M._current_win)
-    vim.api.nvim_win_set_buf(M._current_win, session.bufnr)
-    apply_win_options(M._current_win)
-    session_mod.set_current(session.id)
-    M.refresh_title(session)
-    restore_session_view_and_mode(session, open_opts)
-    return
+  -- If window already exists
+  if M.is_open() then
+    local cur_is_float = M.is_float()
+    local want_float = target_pos == "float"
+
+    -- If the user explicitly requested a different layout type (e.g. switching between float and split)
+    if open_opts.position and (cur_is_float ~= want_float) then
+      M.save_current_view()
+      local old_win = M._current_win
+      M._current_win = nil
+      if old_win and vim.api.nvim_win_is_valid(old_win) then
+        pcall(vim.api.nvim_win_close, old_win, true)
+      end
+    else
+      -- Same layout: bring it to focus and switch buffer
+      M.save_current_view()
+      vim.api.nvim_set_current_win(M._current_win)
+      vim.api.nvim_win_set_buf(M._current_win, session.bufnr)
+      apply_win_options(M._current_win)
+      session_mod.set_current(session.id)
+      M.refresh_title(session)
+      restore_session_view_and_mode(session, open_opts)
+      return
+    end
   end
 
-  if ui_opts.position == "split" then
+  if target_pos == "split" then
     local target_height = get_split_height(ui_opts)
     vim.cmd(string.format("botright %dsplit", target_height))
     M._current_win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(M._current_win, session.bufnr)
     vim.wo[M._current_win].winfixheight = true
     pcall(vim.api.nvim_win_set_height, M._current_win, target_height)
-  elseif ui_opts.position == "vsplit" then
+  elseif target_pos == "vsplit" then
     local target_width = get_split_width(ui_opts)
     vim.cmd(string.format("botright vertical %dsplit", target_width))
     M._current_win = vim.api.nvim_get_current_win()
@@ -476,8 +515,8 @@ function M.open(session, open_opts)
     vim.wo[M._current_win].winfixwidth = true
     pcall(vim.api.nvim_win_set_width, M._current_win, target_width)
   else
-    -- Default: float
-    local float_opts = get_float_dims(ui_opts)
+    -- Default: float (centered modal)
+    local float_opts = get_float_dims(ui_opts, open_opts.position == "float")
     float_opts.title = M.format_float_title_chunks(session)
     float_opts.title_pos = "center"
 
@@ -519,6 +558,17 @@ function M.open(session, open_opts)
     end)
   end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Rename agent session" })
 
+  -- Map z / Z / <C-w>z / <C-w>m to toggle between center full (float) and side view
+  local function map_zoom(lhs)
+    vim.keymap.set("n", lhs, function()
+      M.toggle_zoom()
+    end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Toggle center full / side view" })
+  end
+
+  map_zoom("z")
+  map_zoom("Z")
+  map_zoom("<C-w>z")
+  map_zoom("<C-w>m")
   -- Buffer-local navigation keymaps (normal mode) to cycle between sessions like buffer tabs
   local function map_cycle(lhs, dir)
     vim.keymap.set("n", lhs, function()
@@ -598,6 +648,53 @@ function M.toggle()
   end
 
   M.open(session)
+end
+
+---Toggle between center full (float) screen and side split view for the active session
+function M.toggle_zoom()
+  local session = nil
+  if M.is_open() then
+    local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+    session = session_mod.get_by_bufnr(cur_buf)
+  end
+  session = session or session_mod.get_current()
+
+  if not session then
+    local all = session_mod.get_all()
+    local _, first = next(all)
+    session = first
+  end
+
+  if not session then
+    session = session_mod.create()
+  end
+
+  local opts = config.get()
+  local ui_opts = opts.ui or {}
+
+  if not M.is_open() then
+    -- Not open: open directly in centered full float (zoom view)
+    M.open(session, { position = "float" })
+    return
+  end
+
+  M.save_current_view()
+  local is_float = M.is_float()
+
+  local old_win = M._current_win
+  M._current_win = nil
+  if old_win and vim.api.nvim_win_is_valid(old_win) then
+    pcall(vim.api.nvim_win_close, old_win, true)
+  end
+
+  if is_float then
+    -- Switch back to side split (configured position, default to vsplit)
+    local target_pos = (ui_opts.position and ui_opts.position ~= "float") and ui_opts.position or "vsplit"
+    M.open(session, { position = target_pos })
+  else
+    -- Switch to center full float
+    M.open(session, { position = "float" })
+  end
 end
 
 ---Select and open a session from a picker

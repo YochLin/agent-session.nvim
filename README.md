@@ -13,6 +13,7 @@ A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g.
 - 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
 - 🔔 **Background Task Notifications**: Receive automatic notifications (`vim.notify` / nvim-notify / Snacks) when unfocused background agent sessions complete tasks (idle) or exit.
 - 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
+- 🔍 **Zoom & Center Full View Toggle**: Instantly switch between right-side split (compact view) and centered full-screen float (large reading view) with `z` or `:AgentSessionZoom`.
 - 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
 - 🧩 **Lazy.nvim & LazyVim & AstroNvim Ready**: Zero-boilerplate setup and keymapping configuration.
 
@@ -30,6 +31,8 @@ return {
   cmd = {
     "AgentSession",
     "AgentSessionToggle",
+    "AgentSessionZoom",
+    "AgentSessionToggleZoom",
     "AgentSessionNext",
     "AgentSessionPrev",
     "AgentSessionGoto",
@@ -50,6 +53,7 @@ return {
   },
   keys = {
     { "<leader>at", "<cmd>AgentSessionToggle<cr>", desc = "Toggle Agent Session Window" },
+    { "<leader>az", "<cmd>AgentSessionZoom<cr>", desc = "Toggle Center Full / Side View" },
     { "<leader>ae", "<cmd>AgentSessionSidebar<cr>", desc = "Toggle Agent Explorer (Sidebar)" },
     { "<leader>an", "<cmd>AgentSessionNew<cr>", desc = "New Agent Session (Interactive)" },
     { "<leader>aa", "<cmd>AgentSessionSelectAgent<cr>", desc = "Select & Launch Agent" },
@@ -90,6 +94,8 @@ return {
       enabled = true,
       on_idle = true,
       on_exit = true,
+      idle_delay = 2500, -- ms session must remain idle before notifying (avoids subagent / tool pause flickers)
+      cooldown = 5000, -- minimum ms between notifications for the same session
     },
     status_icons = {
       running = "⚡",
@@ -145,6 +151,8 @@ require("agent-session").setup({
     enabled = true,
     on_idle = true,
     on_exit = true,
+    idle_delay = 2500, -- Milliseconds session must remain idle before notifying (avoids subagent flickers)
+    cooldown = 5000, -- Minimum ms between notifications for the same session
   },
   status_icons = {
     running = "⚡",
@@ -166,10 +174,11 @@ require("agent-session").setup({
 | Command | Description |
 | :--- | :--- |
 | `:AgentSession` / `:AgentSessionToggle` | Toggle current active session window |
+| `:AgentSessionZoom` / `:AgentSessionToggleZoom` | Toggle between center full (float) screen and side split view |
 | `:AgentSessionNext` / `:AgentSession next` | Switch to next agent session (chronological order) |
 | `:AgentSessionPrev` / `:AgentSession prev` | Switch to previous agent session |
 | `:AgentSessionGoto [N]` / `:AgentSession [N]` | Jump directly to agent session by tab index number |
-| `:AgentSessionNew [agent\|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
+| `:AgentSessionNew [agent|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
 | `:AgentSessionSelectAgent` | Open interactive picker to choose which agent to launch |
 | `:AgentSessionList` | Open interactive session picker to switch active session |
 | `:AgentSessionPrompt [target] [prompt]` | Send prompt/command to a specific session (interactive picker if omitted) |
@@ -181,12 +190,13 @@ require("agent-session").setup({
 | `:AgentSessionSendLineTo [target]` | Send line/selection reference directly to a chosen target session |
 | `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
-| `:AgentSession status [idle\|running]` | Check or set current session status |
+| `:AgentSession status [idle|running]` | Check or set current session status |
 
 ### 🔀 Session Window Keymaps & Tab Navigation (Normal Mode)
 
 When inside an Agent Session window in Normal mode (`<C-\><C-n>` to leave terminal input mode):
 
+- `z` / `Z` / `<C-w>z` / `<C-w>m` : **Toggle Zoom** (switch between Center Full Float and Right Side Split)
 - `]b` / `]s` / `]a` : Cycle to **Next** Agent Session
 - `[b` / `[s` / `[a` : Cycle to **Previous** Agent Session
 - `1` ~ `9` / `1gt` ~ `9gt` / `]1` ~ `]9` : Jump directly to Session Tab **1 ~ 9**

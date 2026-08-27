@@ -54,8 +54,13 @@ Default options: >lua
         title = " Agent Session ",
       },
       idle_timeout = 800,
-      notify_on_idle = true,
-      notify_on_exit = true,
+      notifications = {
+        enabled = true,
+        on_idle = true,
+        on_exit = true,
+        idle_delay = 2500,
+        cooldown = 5000,
+      },
     })
 <
 
@@ -67,6 +72,9 @@ Default options: >lua
 
 :AgentSessionToggle
     Toggle the active agent session window.
+
+:AgentSessionZoom / :AgentSessionToggleZoom
+    Toggle between center full (float) screen and side split view.
 
 :AgentSessionNext / :AgentSession next
     Switch to next agent session in chronological order.
@@ -139,6 +147,9 @@ require("agent-session").cycle_session(direction, opts)
 
 require("agent-session").toggle()
     Toggle current session window.
+
+require("agent-session").toggle_zoom()
+    Toggle between center full (float) screen and side split view.
 
 require("agent-session").list_sessions()
     Open session selector via `vim.ui.select`.

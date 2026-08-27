@@ -56,6 +56,16 @@ function M.toggle()
   ui.toggle()
 end
 
+---Toggle between center full (float) screen and side split view
+function M.toggle_zoom()
+  ui.toggle_zoom()
+end
+
+---Alias for toggle_zoom
+M.zoom = M.toggle_zoom
+M.toggle_layout = M.toggle_zoom
+M.maximize = M.toggle_zoom
+
 ---Open session selector picker
 function M.list_sessions()
   ui.select_session(function(sess)
