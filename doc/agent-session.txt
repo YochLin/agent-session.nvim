@@ -52,6 +52,10 @@ Default options: >lua
         height = 0.8,
         border = "rounded",
         title = " Agent Session ",
+        terminal_mappings = {
+          enabled = true,
+          escape = "<C-\\><C-\\>",
+        },
       },
       idle_timeout = 800,
       notifications = {

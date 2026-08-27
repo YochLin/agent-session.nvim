@@ -2,12 +2,20 @@
 ---@field session_dir? string Directory to save session metadata and logs
 ---@field default_agent? string Default agent type (e.g. "claude", "custom")
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
+---@field keymaps? AgentSessionKeymapsConfig Global keymaps working seamlessly across normal & terminal mode
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
 ---@field spinner? AgentSessionSpinnerConfig Animated spinner settings
 ---@field hooks? table<string, fun(session: table)> Lifecycle hooks
 ---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field notify_on_exit? boolean Notify when a background session exits (default: true)
 ---@field notifications? AgentSessionNotificationConfig Notification settings
+
+---@class AgentSessionKeymapsConfig
+---@field toggle? string|false Global shortcut to toggle session window (modes: n, t)
+---@field zoom? string|false Global shortcut to toggle zoom / full screen (modes: n, t)
+---@field sidebar? string|false Global shortcut to toggle sidebar explorer (modes: n, t)
+---@field next? string|false Global shortcut to cycle to next session (modes: n, t)
+---@field prev? string|false Global shortcut to cycle to previous session (modes: n, t)
 
 ---@class AgentSessionSpinnerConfig
 ---@field enabled? boolean Enable animated spinner for running sessions (default: true)
@@ -26,6 +34,10 @@
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
 
+---@class AgentSessionTerminalMappingsConfig
+---@field enabled? boolean Enable buffer-local terminal mode escape keymap (default: true)
+---@field escape? string|false Key to exit terminal mode back to normal mode (default: "<C-\\><C-\\>")
+
 ---@class AgentSessionUIConfig
 ---@field width? number Default width (0-1 float or integer)
 ---@field height? number Default height (0-1 float or integer)
@@ -38,6 +50,7 @@
 ---@field position? "float"|"split"|"vsplit" Window position
 ---@field tabbar? boolean Show session tab bar at top of window (default: true)
 ---@field restore_view? boolean Preserve scroll position and cursor line when switching sessions (default: true)
+---@field terminal_mappings? AgentSessionTerminalMappingsConfig Terminal mode keymaps configuration
 
 local M = {}
 
@@ -82,6 +95,10 @@ M.defaults = {
     title = " Agent Session ",
     tabbar = true, -- Show session tab bar at top of window
     restore_view = true, -- Preserve scroll position and normal/terminal mode across session switches
+    terminal_mappings = {
+      enabled = true,
+      escape = "<C-\\><C-\\>", -- Double Ctrl-\ to exit terminal mode back to normal mode safely
+    },
   },
   sidebar = {
     position = "auto", -- "auto" (bottom-left under neo-tree if open, else left), "left", "bottom-left"

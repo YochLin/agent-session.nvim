@@ -163,14 +163,16 @@ function M.is_open()
   return M._current_win ~= nil and vim.api.nvim_win_is_valid(M._current_win)
 end
 
----Check if the current session window is a floating window
+---Check if the current session window (or given window) is a floating window
+---@param win? number
 ---@return boolean
-function M.is_float()
-  if not M.is_open() then
+function M.is_float(win)
+  win = win or M._current_win
+  if not win or not vim.api.nvim_win_is_valid(win) then
     return false
   end
-  local ok, cfg = pcall(vim.api.nvim_win_get_config, M._current_win)
-  return ok and cfg.relative ~= ""
+  local ok, cfg = pcall(vim.api.nvim_win_get_config, win)
+  return ok and cfg ~= nil and cfg.relative ~= nil and cfg.relative ~= ""
 end
 
 ---Apply clean window options for terminal display
@@ -186,6 +188,11 @@ local function apply_win_options(win)
   vim.wo[win].spell = false
   if vim.fn.has("nvim-0.9") == 1 then
     vim.wo[win].statuscolumn = ""
+  end
+  if M.is_float(win) then
+    pcall(function()
+      vim.wo[win].winbar = ""
+    end)
   end
 end
 
@@ -354,6 +361,9 @@ function M.refresh_title(session)
     local ui_opts = opts.ui or {}
 
     if M.is_float() then
+      pcall(function()
+        vim.wo[M._current_win].winbar = ""
+      end)
       local chunks = M.format_float_title_chunks(active_session)
       pcall(vim.api.nvim_win_set_config, M._current_win, {
         title = chunks,
@@ -544,8 +554,16 @@ function M.open(session, open_opts)
   session_mod.set_current(session.id)
   restore_session_view_and_mode(session, open_opts)
 
-  -- Map q to hide window in normal mode
+  -- Setup buffer-local keymaps for this session buffer
+  local term_cfg = ui_opts.terminal_mappings or {}
+  local term_enabled = term_cfg.enabled ~= false
+
+  -- Map q and <Esc> to hide window in normal mode
   vim.keymap.set("n", "q", function()
+    M.close_window()
+  end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Hide agent session window" })
+
+  vim.keymap.set("n", "<Esc>", function()
     M.close_window()
   end, { buffer = session.bufnr, nowait = true, silent = true, desc = "Hide agent session window" })
 
@@ -615,6 +633,22 @@ function M.open(session, open_opts)
       silent = true,
       desc = string.format("Jump to agent session %d", idx),
     })
+  end
+
+  -- Terminal mode (t) keymap: safe exit to normal mode via double Ctrl-\ (without touching Esc)
+  if term_enabled then
+    local escape_key = term_cfg.escape
+    if escape_key == nil then
+      escape_key = "<C-\\><C-\\>"
+    end
+
+    if escape_key and escape_key ~= "" and escape_key ~= false then
+      vim.keymap.set("t", escape_key, "<C-\\><C-n>", {
+        buffer = session.bufnr,
+        silent = true,
+        desc = "Exit terminal mode to normal mode",
+      })
+    end
   end
 end
 
