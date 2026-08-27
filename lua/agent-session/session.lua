@@ -13,6 +13,8 @@ local M = {}
 ---@field status "running"|"idle"|"stopped" Session status
 ---@field exit_code number|nil Process exit code
 ---@field _timer userdata|nil Libuv timer for idle debouncing
+---@field _notify_timer userdata|nil Libuv timer for delayed idle notifications
+---@field _last_notified_at number|nil Timestamp (ms) of last notification sent
 ---@field _saved_view table|nil Saved window view from winsaveview()
 ---@field _saved_mode "t"|"n"|nil Last active mode when unfocused ("t" for terminal, "n" for normal)
 ---@field _is_initial boolean|nil Whether this is the initial startup before any task
@@ -189,37 +191,30 @@ end
 function M._handle_status_notification(session, new_status, old_status, opts)
   local notify_cfg = opts.notifications or {}
   if notify_cfg.enabled == false then
+    if session._notify_timer and not session._notify_timer:is_closing() then
+      session._notify_timer:stop()
+    end
     return
   end
 
-  -- Don't notify if the user is actively focused on this session's buffer
-  if M.is_focused(session) then
+  -- If returning to running, immediately cancel any pending delayed idle notification
+  if new_status == "running" then
+    if session._notify_timer and not session._notify_timer:is_closing() then
+      session._notify_timer:stop()
+    end
     return
   end
 
-  if new_status == "idle" and old_status == "running" then
-    -- Suppress notification on initial session spawn debounce
-    if session._is_initial then
-      session._is_initial = false
+  if new_status == "stopped" then
+    if session._notify_timer and not session._notify_timer:is_closing() then
+      session._notify_timer:stop()
+    end
+
+    -- Don't notify if the user is actively focused on this session's buffer
+    if M.is_focused(session) then
       return
     end
 
-    local should_notify = notify_cfg.on_idle
-    if should_notify == nil then
-      should_notify = opts.notify_on_idle
-    end
-    if should_notify == nil then
-      should_notify = true
-    end
-
-    if should_notify then
-      local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
-      vim.notify(msg, vim.log.levels.INFO, {
-        title = "Agent Session",
-        icon = "🤖",
-      })
-    end
-  elseif new_status == "stopped" and (old_status == "running" or old_status == "idle") then
     local should_notify = notify_cfg.on_exit
     if should_notify == nil then
       should_notify = opts.notify_on_exit
@@ -237,6 +232,74 @@ function M._handle_status_notification(session, new_status, old_status, opts)
         title = "Agent Session",
         icon = "⚪",
       })
+    end
+    return
+  end
+
+  if new_status == "idle" and old_status == "running" then
+    -- Suppress notification on initial session spawn debounce
+    if session._is_initial then
+      session._is_initial = false
+      return
+    end
+
+    -- Don't notify if the user is actively focused on this session's buffer
+    if M.is_focused(session) then
+      return
+    end
+
+    local should_notify = notify_cfg.on_idle
+    if should_notify == nil then
+      should_notify = opts.notify_on_idle
+    end
+    if should_notify == nil then
+      should_notify = true
+    end
+
+    if not should_notify then
+      return
+    end
+
+    local delay = notify_cfg.idle_delay
+    if delay == nil then
+      delay = 2500
+    end
+
+    local function fire_idle_notification()
+      if session.status ~= "idle" or M.is_focused(session) then
+        return
+      end
+
+      local now = uv.now()
+      local cooldown = notify_cfg.cooldown or 5000
+      if session._last_notified_at and (now - session._last_notified_at < cooldown) then
+        return
+      end
+      session._last_notified_at = now
+
+      local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
+      vim.notify(msg, vim.log.levels.INFO, {
+        title = "Agent Session",
+        icon = "🤖",
+      })
+    end
+
+    if delay <= 0 then
+      fire_idle_notification()
+    else
+      if not session._notify_timer or session._notify_timer:is_closing() then
+        session._notify_timer = uv.new_timer()
+      else
+        session._notify_timer:stop()
+      end
+
+      session._notify_timer:start(
+        delay,
+        0,
+        vim.schedule_wrap(function()
+          fire_idle_notification()
+        end)
+      )
     end
   end
 end
@@ -341,6 +404,8 @@ function M.create(name, agent_name)
     status = "running",
     exit_code = nil,
     _timer = timer,
+    _notify_timer = nil,
+    _last_notified_at = nil,
     _saved_view = nil,
     _saved_mode = "t",
     _is_initial = true,
@@ -382,6 +447,10 @@ function M.create(name, agent_name)
         timer:stop()
         timer:close()
       end
+      if session._notify_timer and not session._notify_timer:is_closing() then
+        session._notify_timer:stop()
+        session._notify_timer:close()
+      end
       session.exit_code = exit_code
       M.set_status(session, "stopped")
       if opts.hooks and opts.hooks.on_session_exit then
@@ -398,6 +467,11 @@ function M.create(name, agent_name)
     on_lines = function()
       if session.status == "stopped" then
         return
+      end
+
+      -- If output arrives, cancel any pending delayed idle notification immediately
+      if session._notify_timer and not session._notify_timer:is_closing() then
+        session._notify_timer:stop()
       end
 
       -- If not already marked as running, switch to running
@@ -423,6 +497,10 @@ function M.create(name, agent_name)
       if timer and not timer:is_closing() then
         timer:stop()
         timer:close()
+      end
+      if session._notify_timer and not session._notify_timer:is_closing() then
+        session._notify_timer:stop()
+        session._notify_timer:close()
       end
     end,
   })
@@ -609,6 +687,11 @@ function M.delete(id)
   if session._timer and not session._timer:is_closing() then
     session._timer:stop()
     session._timer:close()
+  end
+
+  if session._notify_timer and not session._notify_timer:is_closing() then
+    session._notify_timer:stop()
+    session._notify_timer:close()
   end
 
   if session.job_id > 0 and session.status ~= "stopped" then

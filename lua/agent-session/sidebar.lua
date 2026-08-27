@@ -138,8 +138,9 @@ function M.render()
   table.insert(lines, string.rep("─", 32))
   table.insert(lines, " <CR>: Open  n: New    d: Delete")
   table.insert(lines, " r: Rename   p: Prompt P: Pipe")
-  table.insert(lines, " e: Expand   +/-: Hgt  >/<: Width")
-  table.insert(lines, " a: Agent    =: Reset  q: Close")
+  table.insert(lines, " z: Zoom     e: Expand a: Agent")
+  table.insert(lines, " +/-: Hgt    >/<: Wdt  =: Reset")
+  table.insert(lines, " q: Close")
   for i = #lines - 5, #lines do
     table.insert(highlights, { i, 0, -1, "AgentSessionHelp" })
   end
@@ -247,6 +248,21 @@ local function setup_keymaps(bufnr)
     local s = get_cursor_session()
     if s then
       ui.open(s)
+    end
+  end, map_opts)
+
+  -- z or Z: Open session in zoomed centered float
+  vim.keymap.set("n", "z", function()
+    local s = get_cursor_session()
+    if s then
+      ui.open(s, { position = "float" })
+    end
+  end, map_opts)
+
+  vim.keymap.set("n", "Z", function()
+    local s = get_cursor_session()
+    if s then
+      ui.open(s, { position = "float" })
     end
   end, map_opts)
 
