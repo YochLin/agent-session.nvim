@@ -565,9 +565,15 @@ function M.status()
     return ""
   end
   session.sync_status(cur)
-  local opts = config.get()
-  local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
-  local icon = icons[cur.status] or ""
+  local ok_ui, ui_mod = pcall(require, "agent-session.ui")
+  local icon
+  if ok_ui and ui_mod.get_status_icon then
+    icon = ui_mod.get_status_icon(cur.status)
+  else
+    local opts = config.get()
+    local icons = opts.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
+    icon = icons[cur.status] or ""
+  end
   return string.format("%s %s", icon, cur.status)
 end
 

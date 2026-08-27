@@ -40,7 +40,7 @@ function M.get_status_icon(status)
   return icons[status] or "•"
 end
 
----Start animated spinner timer (only when running sessions exist and UI window is open)
+---Start animated spinner timer (only when running sessions exist and UI window or sidebar is open)
 function M._start_spinner()
   local opts = config.get()
   local spinner_cfg = opts.spinner or {}
@@ -58,7 +58,12 @@ function M._start_spinner()
     interval,
     interval,
     vim.schedule_wrap(function()
-      if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) or not has_running_session() then
+      local win_open = M._current_win and vim.api.nvim_win_is_valid(M._current_win)
+      local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+      local sb_open = ok_sb and sidebar_mod.is_open and sidebar_mod.is_open()
+      local running = has_running_session()
+
+      if not running or (not win_open and not sb_open) then
         M._stop_spinner()
         return
       end
@@ -66,7 +71,13 @@ function M._start_spinner()
       local frames = (config.get().spinner and config.get().spinner.frames)
         or { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
       M._spinner_frame_idx = (M._spinner_frame_idx % #frames) + 1
-      M.refresh_title()
+
+      if win_open then
+        M.refresh_title()
+      end
+      if sb_open then
+        sidebar_mod.render()
+      end
     end)
   )
 end
@@ -301,29 +312,35 @@ end
 ---Refresh title and winbar when status updates
 ---@param session? Session
 function M.refresh_title(session)
-  if not M._current_win or not vim.api.nvim_win_is_valid(M._current_win) then
+  local ok_sb, sidebar_mod = pcall(require, "agent-session.sidebar")
+  local sb_open = ok_sb and sidebar_mod.is_open and sidebar_mod.is_open()
+  local win_open = M._current_win and vim.api.nvim_win_is_valid(M._current_win)
+
+  if not win_open and not sb_open then
     M._stop_spinner()
     return
   end
 
-  local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
-  local win_session = session_mod.get_by_bufnr(cur_buf)
-  local active_session = win_session or session or session_mod.get_current()
+  if win_open then
+    local cur_buf = vim.api.nvim_win_get_buf(M._current_win)
+    local win_session = session_mod.get_by_bufnr(cur_buf)
+    local active_session = win_session or session or session_mod.get_current()
 
-  local opts = config.get()
-  local ui_opts = opts.ui or {}
+    local opts = config.get()
+    local ui_opts = opts.ui or {}
 
-  if ui_opts.position == "float" then
-    local chunks = M.format_float_title_chunks(active_session)
-    pcall(vim.api.nvim_win_set_config, M._current_win, {
-      title = chunks,
-      title_pos = "center",
-    })
-  else
-    local winbar_str = M.format_winbar(active_session)
-    pcall(function()
-      vim.wo[M._current_win].winbar = winbar_str
-    end)
+    if ui_opts.position == "float" then
+      local chunks = M.format_float_title_chunks(active_session)
+      pcall(vim.api.nvim_win_set_config, M._current_win, {
+        title = chunks,
+        title_pos = "center",
+      })
+    else
+      local winbar_str = M.format_winbar(active_session)
+      pcall(function()
+        vim.wo[M._current_win].winbar = winbar_str
+      end)
+    end
   end
 
   if has_running_session() then
@@ -638,7 +655,7 @@ function M.select_session(on_select, opts_or_prompt)
   local session_lookup = {}
 
   for _, sess in ipairs(sorted_sessions) do
-    local icon = icons[sess.status] or "•"
+    local icon = M.get_status_icon(sess.status)
     local is_current = cur_sess and cur_sess.id == sess.id
     local prefix = is_current and "➜ " or "  "
     local label = string.format("%s[%s %s] %s (%s) - %s", prefix, icon, sess.status, sess.name, sess.agent, sess.id)
