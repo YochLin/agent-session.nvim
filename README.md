@@ -2,6 +2,8 @@
 
 A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g. Claude Code, terminal agents, LLM CLI sessions) with floating windows, session switching, and lifecycle management.
 
+https://github.com/user-attachments/assets/cd545acf-2252-4ef8-a37d-2e7a003adb13
+
 ---
 
 ## ✨ Features

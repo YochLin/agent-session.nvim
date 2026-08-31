@@ -10,6 +10,8 @@ Session.vim
 Thumbs.db
 .idea/
 .vscode/
+*.mov
+*.mp4
 
 # Testing & Lazy cache/data
 .tests/
