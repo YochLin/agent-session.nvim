@@ -9,6 +9,7 @@
 ---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field notify_on_exit? boolean Notify when a background session exits (default: true)
 ---@field notifications? AgentSessionNotificationConfig Notification settings
+---@field auto_title? AgentSessionAutoTitleConfig Auto-naming session settings
 
 ---@class AgentSessionKeymapsConfig
 ---@field toggle? string|false Global shortcut to toggle session window (modes: n, t)
@@ -28,6 +29,20 @@
 ---@field on_exit? boolean Notify when a background session exits (default: true)
 ---@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 2500, suppresses subagent/tool pause flickers)
 ---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 5000)
+
+---@class AgentSessionAutoTitleAIConfig
+---@field enabled? boolean Enable AI-based summarization (default: false)
+---@field provider? "openai"|"gemini"|"ollama"|"anthropic"|"custom" LLM Provider (default: "openai")
+---@field model? string Model name (e.g. "gpt-4o-mini", "gemini-2.5-flash", "llama3.2:1b", "claude-3-5-haiku-latest")
+---@field api_key? string|fun():string API key or function returning API key (defaults to standard env vars)
+---@field endpoint? string Custom API endpoint (e.g. "http://localhost:11434/v1" or OpenAI compatible proxy)
+---@field custom_fn? fun(prompt: string, session: table, callback: fun(title: string)) Custom AI summarization function
+
+---@class AgentSessionAutoTitleConfig
+---@field enabled? boolean Automatically rename session based on first prompt (default: true)
+---@field max_length? number Maximum character length for local heuristic title (default: 24)
+---@field format? fun(prompt: string, session: table): string|nil Custom title formatter function
+---@field ai? AgentSessionAutoTitleAIConfig AI summarization settings
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
@@ -124,6 +139,19 @@ M.defaults = {
     running = "⚡",
     idle = "🟢",
     stopped = "⚪",
+  },
+  auto_title = {
+    enabled = true,
+    max_length = 24,
+    format = nil,
+    ai = {
+      enabled = false,
+      provider = "openai",
+      model = "gpt-4o-mini",
+      api_key = nil,
+      endpoint = nil,
+      custom_fn = nil,
+    },
   },
   hooks = {
     on_session_start = nil,

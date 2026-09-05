@@ -560,10 +560,12 @@ function M.rename_session(new_name, target)
 
   local function do_rename(s, name)
     if name and vim.trim(name) ~= "" then
+      s._custom_named = true
       session.rename(s.id, name)
     else
       vim.ui.input({ prompt = "Rename session '" .. s.name .. "': ", default = s.name }, function(input)
         if input and vim.trim(input) ~= "" then
+          s._custom_named = true
           session.rename(s.id, input)
         end
       end)
