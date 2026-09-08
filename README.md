@@ -13,7 +13,7 @@ https://github.com/user-attachments/assets/cd545acf-2252-4ef8-a37d-2e7a003adb13
 - 🎯 **Targeted Prompting & Session Dispatch**: Send prompts or commands to specific agents by friendly name or interactive picker without switching contexts.
 - 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
 - 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
-- 🔔 **Background Task Notifications**: Receive automatic notifications (`vim.notify` / nvim-notify / Snacks) when unfocused background agent sessions complete tasks (idle) or exit.
+- 🔔 **Background Task Notifications**: Receive native desktop notifications via host terminal (Warp, Ghostty, WezTerm, iTerm2 via OSC 777 / OSC 9) or OS notification center (macOS `osascript` / Linux `notify-send`) when background agent sessions complete tasks (idle) or exit.
 - 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
 - 🔍 **Zoom & Center Full View Toggle**: Instantly switch between right-side split (compact view) and centered full-screen float (large reading view) with `z` or `:AgentSessionZoom`.
 - 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
@@ -100,8 +100,10 @@ return {
       enabled = true,
       on_idle = true,
       on_exit = true,
-      idle_delay = 2500, -- ms session must remain idle before notifying (avoids subagent / tool pause flickers)
-      cooldown = 5000, -- minimum ms between notifications for the same session
+      idle_delay = 0, -- ms session must remain idle before notifying (0 = immediate upon idle)
+      cooldown = 1000, -- minimum ms between notifications for the same session
+      terminal = "auto", -- "auto" (detects Warp, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
+      system = "auto", -- "auto" (OS-native fallback via osascript / notify-send if terminal unsupported), true, or false
     },
     status_icons = {
       running = "⚡",
@@ -161,8 +163,10 @@ require("agent-session").setup({
     enabled = true,
     on_idle = true,
     on_exit = true,
-    idle_delay = 2500, -- Milliseconds session must remain idle before notifying (avoids subagent flickers)
-    cooldown = 5000, -- Minimum ms between notifications for the same session
+    idle_delay = 0, -- Milliseconds session must remain idle before notifying (0 = immediate upon idle)
+    cooldown = 1000, -- Minimum ms between notifications for the same session
+    terminal = "auto", -- "auto" (detects WarpTerminal, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
+    system = "auto", -- "auto" (OS-native fallback via osascript / notify-send if terminal unsupported), true, or false
   },
   status_icons = {
     running = "⚡",
@@ -201,6 +205,7 @@ require("agent-session").setup({
 | `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
 | `:AgentSession status [idle|running]` | Check or set current session status |
+| `:AgentSessionTestNotify [delay] [msg]` | Send a test desktop notification (terminal OSC or OS-native fallback) |
 
 ### 🔀 Session Window Keymaps & Keyboard Controls
 
