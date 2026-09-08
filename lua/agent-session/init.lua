@@ -660,6 +660,23 @@ function M.notify_terminal(title, msg, mode)
   return session.send_terminal_notification(title, msg, mode)
 end
 
+---Send an OS-level native desktop notification (macOS osascript, Linux notify-send, Windows PowerShell)
+---@param title string
+---@param msg string
+---@return boolean success
+function M.notify_system(title, msg)
+  return session.send_system_notification(title, msg)
+end
+
+---Send a desktop notification with host terminal OSC and OS-native fallback
+---@param title string
+---@param msg string
+---@param opts? table
+---@return boolean success, string? channel
+function M.notify_desktop(title, msg, opts)
+  return session.notify_desktop(title, msg, opts)
+end
+
 ---Export modules for advanced usage
 M.session = session
 M.ui = ui

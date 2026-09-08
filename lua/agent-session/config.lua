@@ -29,6 +29,7 @@
 ---@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 0, immediate upon becoming idle)
 ---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 1000)
 ---@field terminal? boolean|"auto"|"osc777"|"osc9" Send desktop notifications to host terminal (e.g. Warp, WezTerm, Ghostty, iTerm2) via OSC sequence (default: "auto")
+---@field system? boolean|"auto" Send OS-native desktop notification (macOS osascript, Linux notify-send) (default: "auto", used as fallback when terminal OSC unsupported)
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
@@ -121,6 +122,7 @@ M.defaults = {
     idle_delay = 0, -- Milliseconds session must remain continuously idle before notifying (0 = immediate upon becoming idle)
     cooldown = 1000, -- Minimum ms between consecutive notifications for the same session
     terminal = "auto", -- "auto" (detects WarpTerminal, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
+    system = "auto", -- "auto" (fallback to osascript/notify-send if terminal OSC unsupported), true, or false
   },
   status_icons = {
     running = "⚡",

@@ -83,19 +83,23 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
       )
 
     local function do_notify()
-      local sent = agent_session.notify_terminal("Agent Session", msg)
+      local sent, channel = agent_session.notify_desktop("Agent Session", msg)
       if sent then
-        vim.notify(
-          "[agent-session] Sent OSC notification to terminal: "
-            .. msg
-            .. " (Note: Warp only displays desktop banners when Warp is in the background)",
-          vim.log.levels.INFO
-        )
+        if channel == "terminal" then
+          vim.notify(
+            "[agent-session] Sent OSC notification to terminal: "
+              .. msg
+              .. " (Note: Warp/Ghostty only displays desktop banners when unfocused)",
+            vim.log.levels.INFO
+          )
+        else
+          vim.notify(
+            "[agent-session] Sent test notification via OS-native desktop notification: " .. msg,
+            vim.log.levels.INFO
+          )
+        end
       else
-        vim.notify(
-          "[agent-session] Terminal notifications disabled or unsupported terminal environment.",
-          vim.log.levels.WARN
-        )
+        vim.notify("[agent-session] Desktop notifications disabled or unsupported environment.", vim.log.levels.WARN)
       end
     end
 
@@ -394,19 +398,23 @@ vim.api.nvim_create_user_command("AgentSessionTestNotify", function(opts)
     )
 
   local function do_notify()
-    local sent = agent_session.notify_terminal("Agent Session", msg)
+    local sent, channel = agent_session.notify_desktop("Agent Session", msg)
     if sent then
-      vim.notify(
-        "[agent-session] Sent test notification to terminal: "
-          .. msg
-          .. " (Note: Warp only displays desktop banners when Warp is in the background)",
-        vim.log.levels.INFO
-      )
+      if channel == "terminal" then
+        vim.notify(
+          "[agent-session] Sent test notification via terminal OSC: "
+            .. msg
+            .. " (Note: Warp/Ghostty only displays desktop banners when unfocused)",
+          vim.log.levels.INFO
+        )
+      else
+        vim.notify(
+          "[agent-session] Sent test notification via OS-native desktop notification: " .. msg,
+          vim.log.levels.INFO
+        )
+      end
     else
-      vim.notify(
-        "[agent-session] Terminal notifications disabled or unsupported terminal environment.",
-        vim.log.levels.WARN
-      )
+      vim.notify("[agent-session] Desktop notifications disabled or unsupported environment.", vim.log.levels.WARN)
     end
   end
 

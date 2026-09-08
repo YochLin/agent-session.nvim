@@ -310,6 +310,114 @@ function M.send_terminal_notification(title, body, term_mode)
   return write_to_terminal(seq)
 end
 
+---Send an OS-level native desktop notification (macOS osascript, Linux notify-send, Windows PowerShell)
+---@param title string Notification title
+---@param body string Notification message body
+---@return boolean success Whether an OS notification command was dispatched
+function M.send_system_notification(title, body)
+  local clean_title = tostring(title or ""):gsub("[\r\n\t]", " ")
+  local clean_body = tostring(body or ""):gsub("[\r\n\t]", " ")
+
+  if vim.fn.has("mac") == 1 or vim.fn.has("macunix") == 1 then
+    local safe_title = clean_title:gsub("\\", "\\\\"):gsub('"', '\\"')
+    local safe_body = clean_body:gsub("\\", "\\\\"):gsub('"', '\\"')
+    local script = string.format('display notification "%s" with title "%s"', safe_body, safe_title)
+    local cmd = { "osascript", "-e", script }
+    if vim.system then
+      pcall(vim.system, cmd, { detach = true })
+    elseif vim.fn.jobstart then
+      pcall(vim.fn.jobstart, cmd, { detach = true })
+    end
+    return true
+  elseif vim.fn.has("unix") == 1 then
+    if vim.fn.executable("notify-send") == 1 then
+      local cmd = { "notify-send", clean_title, clean_body }
+      if vim.system then
+        pcall(vim.system, cmd, { detach = true })
+      elseif vim.fn.jobstart then
+        pcall(vim.fn.jobstart, cmd, { detach = true })
+      end
+      return true
+    end
+  elseif vim.fn.has("win32") == 1 then
+    local ps_bin = (vim.fn.executable("powershell.exe") == 1 and "powershell.exe")
+      or (vim.fn.executable("powershell") == 1 and "powershell")
+    if ps_bin then
+      local safe_title = clean_title:gsub('"', '`"')
+      local safe_body = clean_body:gsub('"', '`"')
+      local ps_script = string.format(
+        '[void] [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms"); '
+          .. "$notify = New-Object System.Windows.Forms.NotifyIcon; "
+          .. "$notify.Icon = [System.Drawing.SystemIcons]::Information; "
+          .. "$notify.Visible = $true; "
+          .. '$notify.ShowBalloonTip(5000, "%s", "%s", [System.Windows.Forms.ToolTipIcon]::Info)',
+        safe_title,
+        safe_body
+      )
+      local cmd = { ps_bin, "-NoProfile", "-NonInteractive", "-Command", ps_script }
+      if vim.system then
+        pcall(vim.system, cmd, { detach = true })
+      elseif vim.fn.jobstart then
+        pcall(vim.fn.jobstart, cmd, { detach = true })
+      end
+      return true
+    end
+  end
+
+  return false
+end
+
+---Dispatch desktop notification using host terminal OSC (if supported) with OS-native fallback
+---@param title string Notification title
+---@param body string Notification message body
+---@param notify_cfg? table Notification options from config
+---@return boolean success Whether any notification was sent
+---@return string? channel Which channel handled the notification ("terminal", "system", or nil)
+function M.notify_desktop(title, body, notify_cfg)
+  if not notify_cfg then
+    local opts = config.get()
+    notify_cfg = opts.notifications or {}
+  end
+
+  if notify_cfg.enabled == false then
+    return false, nil
+  end
+
+  local term_mode = notify_cfg.terminal
+  if term_mode == nil then
+    term_mode = "auto"
+  end
+
+  local sys_mode = notify_cfg.system
+  if sys_mode == nil then
+    sys_mode = "auto"
+  end
+
+  local term_sent = false
+  if term_mode ~= false then
+    term_sent = M.send_terminal_notification(title, body, term_mode)
+  end
+
+  if term_sent then
+    -- If terminal OSC notification succeeded and system is "auto" (fallback mode),
+    -- do not send duplicate system notification.
+    if sys_mode == true then
+      M.send_system_notification(title, body)
+    end
+    return true, "terminal"
+  end
+
+  -- Fallback to OS native notification if terminal OSC didn't send
+  if sys_mode ~= false then
+    local sys_sent = M.send_system_notification(title, body)
+    if sys_sent then
+      return true, "system"
+    end
+  end
+
+  return false, nil
+end
+
 ---Handle background notifications when session status changes
 ---@param session Session
 ---@param new_status "running"|"idle"|"stopped"
@@ -351,8 +459,8 @@ function M._handle_status_notification(session, new_status, old_status, opts)
         or string.format("Agent '%s' (%s) process stopped", session.name, session.agent)
       local title = "Agent Session"
 
-      -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
-      M.send_terminal_notification(title, msg, notify_cfg.terminal)
+      -- Dispatch desktop notification (terminal OSC with OS-native fallback)
+      M.notify_desktop(title, msg, notify_cfg)
     end
     return
   end
@@ -401,8 +509,8 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
       local title = "Agent Session"
 
-      -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
-      M.send_terminal_notification(title, msg, notify_cfg.terminal)
+      -- Dispatch desktop notification (terminal OSC with OS-native fallback)
+      M.notify_desktop(title, msg, notify_cfg)
     end
 
     if delay <= 0 then
