@@ -1,27 +1,27 @@
-# agent-session.nvim 🤖
+# agent-session.nvim
 
-A modern, extensible Neovim plugin for managing multiple AI agent sessions (e.g. Claude Code, terminal agents, LLM CLI sessions) with floating windows, session switching, and lifecycle management.
+A Neovim plugin for managing multiple AI agent sessions (Claude Code, terminal agents, LLM CLI sessions) with floating windows, session switching, and lifecycle management.
 
 https://github.com/user-attachments/assets/cd545acf-2252-4ef8-a37d-2e7a003adb13
 
 ---
 
-## ✨ Features
+## Features
 
-- ⚡ **Multi-Session Management**: Run and track multiple background AI agent processes.
-- 📑 **Interactive Session Tab Bar**: Browser-like tab bar at the top of the window showing all active sessions, status icons (⚡/🟢/⚪), and highlighting the active session.
-- 🎯 **Targeted Prompting & Session Dispatch**: Send prompts or commands to specific agents by friendly name or interactive picker without switching contexts.
-- 🏷️ **Session Renaming & Role Tagging**: Rename sessions easily to assign clear roles (e.g. `architect`, `coder`, `tester`, `reviewer`).
-- 🗂️ **Left Sidebar Session Explorer**: Interactive side drawer list (like Neo-tree / Aerial) to view, launch, rename, prompt, and manage sessions.
-- 🔔 **Background Task Notifications**: Receive native desktop notifications via host terminal (Warp, Ghostty, WezTerm, iTerm2 via OSC 777 / OSC 9) or OS notification center (macOS `osascript` / Linux `notify-send`) when background agent sessions complete tasks (idle) or exit.
-- 🪟 **Floating & Split Windows**: Toggle floating modal terminals or splits seamlessly.
-- 🔍 **Zoom & Center Full View Toggle**: Instantly switch between right-side split (compact view) and centered full-screen float (large reading view) with `z` or `:AgentSessionZoom`.
-- 🔍 **Universal Picker Integration**: Switch sessions easily using `vim.ui.select` (supports Telescope, Snacks, fzf-lua, dressing.nvim).
-- 🧩 **Lazy.nvim & LazyVim & AstroNvim Ready**: Zero-boilerplate setup and keymapping configuration.
+- **Multi-session management.** Run and track multiple background AI agent processes.
+- **Interactive session tab bar.** A browser-like tab bar at the top of the window shows every active session, its status icon (⚡/🟢/⚪, animated while running), and highlights the active one.
+- **Targeted prompting and session dispatch.** Send prompts or commands to a specific agent by name or through an interactive picker, without switching windows.
+- **Session renaming and role tagging.** Rename sessions to assign roles such as `architect`, `coder`, `tester`, or `reviewer`.
+- **Left sidebar session explorer.** A side drawer, similar to Neo-tree or Aerial, to view, launch, rename, prompt, and manage sessions.
+- **Background task notifications.** Get a native desktop notification through the host terminal (Warp, Ghostty, WezTerm, or iTerm2 via OSC 777 / OSC 9) or the OS notification center (macOS `osascript`, Linux `notify-send`) when a background agent session goes idle or exits.
+- **Floating and split windows.** Toggle floating modal terminals or splits.
+- **Zoom and center full-view toggle.** Switch between a right-side split (compact view) and a centered full-screen float (large reading view) with `z` or `:AgentSessionZoom`.
+- **Universal picker integration.** Switch sessions through `vim.ui.select` (Telescope, Snacks, fzf-lua, dressing.nvim all work).
+- **Lazy.nvim, LazyVim, and AstroNvim ready.** Setup and keymapping configuration with no boilerplate.
 
 ---
 
-## 📦 Installation & Setup
+## Installation and setup
 
 ### Using [lazy.nvim](https://github.com/folke/lazy.nvim) / LazyVim / AstroNvim
 
@@ -114,7 +114,7 @@ return {
 }
 ```
 
-### Statusline / Lualine Integration
+### Statusline / lualine integration
 
 You can display the active agent session status in your statusline:
 
@@ -132,7 +132,7 @@ You can display the active agent session status in your statusline:
 
 ---
 
-## ⚙️ Default Configuration
+## Default configuration
 
 ```lua
 require("agent-session").setup({
@@ -146,15 +146,29 @@ require("agent-session").setup({
     },
   },
   ui = {
-    position = "float", -- "float", "split", "vsplit"
-    width = 0.85,
+    position = "vsplit", -- "float", "split", "vsplit"
+    width = 0.35,
     height = 0.8,
+    float_width = 0.85, -- Width when in float / zoom mode
+    float_height = 0.85, -- Height when in float / zoom mode
     border = "rounded",
     title = " Agent Session ",
+    tabbar = true, -- Show session tab bar at top of window
+    restore_view = true, -- Preserve scroll position and normal/terminal mode across session switches
     terminal_mappings = {
       enabled = true,
       escape = "<C-\\><C-\\>", -- Double Ctrl-\ to exit terminal mode back to normal mode safely
     },
+  },
+  sidebar = {
+    position = "auto", -- "auto" (bottom-left under neo-tree if open, else left), "left", "bottom-left"
+    width = 0.20, -- percentage (0.20 = 20% width) or fixed columns (e.g. 30)
+    height = 0.35, -- percentage (0.35 = 35% height) or fixed lines (e.g. 12)
+  },
+  spinner = {
+    enabled = true, -- Animated spinner for running sessions
+    interval = 80, -- Milliseconds between animation frames
+    frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
   },
   idle_timeout = 800, -- Milliseconds of silence before marking session as idle
   notify_on_idle = true, -- Notify when a background session finishes task
@@ -183,7 +197,7 @@ require("agent-session").setup({
 
 ---
 
-## ⌨️ Commands
+## Commands
 
 | Command | Description |
 | :--- | :--- |
@@ -192,9 +206,10 @@ require("agent-session").setup({
 | `:AgentSessionNext` / `:AgentSession next` | Switch to next agent session (chronological order) |
 | `:AgentSessionPrev` / `:AgentSession prev` | Switch to previous agent session |
 | `:AgentSessionGoto [N]` / `:AgentSession [N]` | Jump directly to agent session by tab index number |
-| `:AgentSessionNew [agent|name] [agent]` | Spawn a new agent session (e.g. `:AgentSessionNew agy`) |
+| `:AgentSessionNew [name] [agent]` | Spawn a new agent session. A single argument that matches a registered agent (e.g. `:AgentSessionNew agy`) is treated as the agent; otherwise it's used as the session name. With no arguments, opens the agent picker. |
 | `:AgentSessionSelectAgent` | Open interactive picker to choose which agent to launch |
 | `:AgentSessionList` | Open interactive session picker to switch active session |
+| `:AgentSessionSidebar` / `:AgentSessionTree` | Toggle the left sidebar session explorer |
 | `:AgentSessionPrompt [target] [prompt]` | Send prompt/command to a specific session (interactive picker if omitted) |
 | `:AgentSessionSendCommand [target] [prompt]` | Alias for `:AgentSessionPrompt` |
 | `:AgentSessionPipe [source] [target] [instruction]` | Pipe output from one session into another session with optional instruction |
@@ -207,28 +222,28 @@ require("agent-session").setup({
 | `:AgentSession status [idle|running]` | Check or set current session status |
 | `:AgentSessionTestNotify [delay] [msg]` | Send a test desktop notification (terminal OSC or OS-native fallback) |
 
-### 🔀 Session Window Keymaps & Keyboard Controls
+### Session window keymaps and keyboard controls
 
-#### ⚡ Terminal Input Mode (`t` mode)
+#### Terminal input mode (`t` mode)
 When typing inside an Agent Session window:
 
-- `<C-\><C-\>` : **Exit Terminal Mode** directly to Normal Mode (**100% safe, never sends `Esc`, never stops running agents**)
-- Global keymaps (e.g. `<C-t>` / `<leader>az`) configured with `mode = { "n", "t" }` can be triggered directly in 1 step from terminal mode!
+- `<C-\><C-\>`: exit terminal mode directly to normal mode. It never sends `Esc` and never stops a running agent.
+- Global keymaps (e.g. `<C-t>` / `<leader>az`) configured with `mode = { "n", "t" }` fire directly from terminal mode, no extra step.
 
-#### 🛋️ Normal Mode (`n` mode)
-When in Normal mode inside an Agent Session window:
+#### Normal mode (`n` mode)
+When in normal mode inside an Agent Session window:
 
-- `z` / `Z` / `<C-w>z` / `<C-w>m` : **Toggle Zoom** (Center Full Float ⟷ Side Split)
-- `q` / `<Esc>` : **Hide / Close** session window
-- `]b` / `]s` / `]a` : Cycle to **Next** Agent Session
-- `[b` / `[s` / `[a` : Cycle to **Previous** Agent Session
-- `1` ~ `9` / `1gt` ~ `9gt` / `]1` ~ `]9` : Jump directly to Session Tab **1 ~ 9**
-- `R` : Rename current session
-- `i` / `a` / `<CR>` : Enter Terminal Input Mode
+- `z` / `Z` / `<C-w>z` / `<C-w>m`: toggle zoom (center full float vs. side split)
+- `q` / `<Esc>`: hide or close the session window
+- `]b` / `]s` / `]a`: cycle to the next agent session
+- `[b` / `[s` / `[a`: cycle to the previous agent session
+- `1`-`9` / `1gt`-`9gt` / `]1`-`]9`: jump directly to session tab 1-9
+- `R`: rename the current session
+- `i` / `a` / `<CR>`: enter terminal input mode
 
 ---
 
-## 🧪 Local Testing
+## Local testing
 
 You can test the plugin in an isolated environment without affecting your main Neovim config:
 
@@ -238,7 +253,7 @@ nvim -u tests/minimal_init.lua
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```text
 agent-session.nvim/
@@ -247,13 +262,15 @@ agent-session.nvim/
 ├── lua/
 │   └── agent-session/
 │       ├── init.lua            # Public API entry point
-│       ├── config.lua          # Default configuration & options
-│       ├── session.lua         # Session model & process manager
-│       └── ui.lua              # Floating window & vim.ui.select picker
+│       ├── config.lua          # Default configuration and options
+│       ├── session.lua         # Session model and process manager
+│       ├── ui.lua              # Floating window and vim.ui.select picker
+│       ├── sidebar.lua         # Left-docked session explorer
+│       └── statusline.lua      # Lualine / Heirline / AstroNvim status formatters
 ├── plugin/
-│   └── agent-session.lua       # User commands & autocommands
+│   └── agent-session.lua       # User commands and autocommands
 ├── tests/
-│   └── minimal_init.lua        # Lazy.nvim isolated repro & test harness
+│   └── minimal_init.lua        # Lazy.nvim isolated repro and test harness
 ├── .luarc.json                 # Lua Language Server settings
 ├── .stylua.toml                # StyLua formatting config
 ├── .gitignore
