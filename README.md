@@ -161,8 +161,9 @@ require("agent-session").setup({
     enabled = true,
     on_idle = true,
     on_exit = true,
-    idle_delay = 2500, -- Milliseconds session must remain idle before notifying (avoids subagent flickers)
-    cooldown = 5000, -- Minimum ms between notifications for the same session
+    idle_delay = 0, -- Milliseconds session must remain idle before notifying (0 = immediate upon idle)
+    cooldown = 1000, -- Minimum ms between notifications for the same session
+    terminal = "auto", -- "auto" (detects WarpTerminal, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
   },
   status_icons = {
     running = "⚡",
@@ -201,6 +202,7 @@ require("agent-session").setup({
 | `:AgentSessionSendFile` | Send `@file` (whole current buffer) to active session |
 | `:AgentSessionSendFileTo [target]` | Send whole buffer reference directly to a chosen target session |
 | `:AgentSession status [idle|running]` | Check or set current session status |
+| `:AgentSessionTestNotify [msg]` | Send a test desktop notification to host terminal (e.g. Warp, Ghostty) via OSC |
 
 ### 🔀 Session Window Keymaps & Keyboard Controls
 

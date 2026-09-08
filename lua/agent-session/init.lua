@@ -651,6 +651,15 @@ function M.astronvim_component(opts)
   return require("agent-session.statusline").astronvim(opts)
 end
 
+---Send an OSC desktop notification to the host terminal (Warp, Ghostty, WezTerm, etc.)
+---@param title string
+---@param msg string
+---@param mode? boolean|"auto"|"osc777"|"osc9"
+---@return boolean success
+function M.notify_terminal(title, msg, mode)
+  return session.send_terminal_notification(title, msg, mode)
+end
+
 ---Export modules for advanced usage
 M.session = session
 M.ui = ui

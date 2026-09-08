@@ -72,6 +72,45 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     local dest = args[3]
     local instruction = #args > 3 and table.concat(args, " ", 4) or nil
     agent_session.pipe_session(source, dest, instruction)
+  elseif subcmd == "test-notify" or subcmd == "notify" then
+    local raw = #args > 1 and table.concat(args, " ", 2) or ""
+    local delay_str, rest = raw:match("^(%d+)%s*(.*)$")
+    local delay = tonumber(delay_str)
+    local msg = (rest and rest ~= "") and rest
+      or (
+        delay and "Agent notification test from agent-session.nvim!"
+        or (raw ~= "" and raw or "Agent notification test from agent-session.nvim!")
+      )
+
+    local function do_notify()
+      local sent = agent_session.notify_terminal("Agent Session", msg)
+      if sent then
+        vim.notify(
+          "[agent-session] Sent OSC notification to terminal: "
+            .. msg
+            .. " (Note: Warp only displays desktop banners when Warp is in the background)",
+          vim.log.levels.INFO
+        )
+      else
+        vim.notify(
+          "[agent-session] Terminal notifications disabled or unsupported terminal environment.",
+          vim.log.levels.WARN
+        )
+      end
+    end
+
+    if delay and delay > 0 then
+      vim.notify(
+        string.format(
+          "[agent-session] Triggering notification in %d seconds. Switch to another app (e.g. Chrome) now to test Warp desktop alert!",
+          delay
+        ),
+        vim.log.levels.INFO
+      )
+      vim.defer_fn(do_notify, delay * 1000)
+    else
+      do_notify()
+    end
   else
     vim.notify("[agent-session] Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
   end
@@ -99,6 +138,7 @@ end, {
       "prompt",
       "send",
       "pipe",
+      "test-notify",
     }
     local has_trailing_space = vim.endswith(line, " ")
 
@@ -340,4 +380,49 @@ end, {
     return complete_session_targets(l[2] or "")
   end,
   desc = "Send current file reference to a chosen target session",
+})
+
+-- :AgentSessionTestNotify [delay_sec] [msg] (test host terminal desktop notification via OSC)
+vim.api.nvim_create_user_command("AgentSessionTestNotify", function(opts)
+  local raw = vim.trim(opts.args or "")
+  local delay_str, rest = raw:match("^(%d+)%s*(.*)$")
+  local delay = tonumber(delay_str)
+  local msg = (rest and rest ~= "") and rest
+    or (
+      delay and "Agent notification test from agent-session.nvim!"
+      or (raw ~= "" and raw or "Agent notification test from agent-session.nvim!")
+    )
+
+  local function do_notify()
+    local sent = agent_session.notify_terminal("Agent Session", msg)
+    if sent then
+      vim.notify(
+        "[agent-session] Sent test notification to terminal: "
+          .. msg
+          .. " (Note: Warp only displays desktop banners when Warp is in the background)",
+        vim.log.levels.INFO
+      )
+    else
+      vim.notify(
+        "[agent-session] Terminal notifications disabled or unsupported terminal environment.",
+        vim.log.levels.WARN
+      )
+    end
+  end
+
+  if delay and delay > 0 then
+    vim.notify(
+      string.format(
+        "[agent-session] Triggering notification in %d seconds. Switch to another app (e.g. Chrome) now to test Warp desktop alert!",
+        delay
+      ),
+      vim.log.levels.INFO
+    )
+    vim.defer_fn(do_notify, delay * 1000)
+  else
+    do_notify()
+  end
+end, {
+  nargs = "?",
+  desc = "Test host terminal desktop notification via OSC (e.g. :AgentSessionTestNotify 3 Testing!)",
 })

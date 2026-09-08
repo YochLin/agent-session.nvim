@@ -62,8 +62,9 @@ Default options: >lua
         enabled = true,
         on_idle = true,
         on_exit = true,
-        idle_delay = 2500,
-        cooldown = 5000,
+        idle_delay = 0,
+        cooldown = 1000,
+        terminal = "auto",
       },
     })
 <
@@ -127,6 +128,9 @@ Default options: >lua
 
 :AgentSessionSendFileTo [target]
     Send `@file` directly to a chosen target session.
+
+:AgentSessionTestNotify [msg]
+    Send a test desktop notification to host terminal (Warp, Ghostty, etc.) via OSC.
 
 =============================================================================
 5. LUA API                                                 *agent-session-api*

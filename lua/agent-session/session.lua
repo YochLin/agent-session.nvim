@@ -18,6 +18,8 @@ local M = {}
 ---@field _saved_view table|nil Saved window view from winsaveview()
 ---@field _saved_mode "t"|"n"|nil Last active mode when unfocused ("t" for terminal, "n" for normal)
 ---@field _is_initial boolean|nil Whether this is the initial startup before any task
+---@field _ready boolean|nil Whether startup has settled and session is ready for tasks
+---@field _busy boolean|nil Whether an active task is running (set on input/output after ready)
 
 ---@type table<string, Session>
 M._active_sessions = {}
@@ -183,6 +185,131 @@ function M.is_focused(session)
   return vim.api.nvim_get_current_buf() == session.bufnr
 end
 
+---Write raw escape sequence to host terminal
+---@param seq string
+---@return boolean success
+local function write_to_terminal(seq)
+  -- 1. Neovim 0.12+ nvim_ui_send: official API for sending raw sequences to TUI host terminal
+  if vim.api.nvim_ui_send then
+    local ok = pcall(vim.api.nvim_ui_send, seq)
+    if ok then
+      return true
+    end
+  end
+
+  -- 2. Direct write to /dev/tty (Unix standard controlling terminal, bypasses Neovim process pipes)
+  local ok_tty = pcall(function()
+    local tty = io.open("/dev/tty", "w")
+    if tty then
+      tty:write(seq)
+      tty:flush()
+      tty:close()
+      return true
+    end
+    return false
+  end)
+  if ok_tty then
+    return true
+  end
+
+  -- 3. Neovim channel 2 (v:stderr), widely supported by plugins (e.g. nvim-osc52)
+  if vim.v.stderr and vim.fn.chansend then
+    local ok_chan, res = pcall(vim.fn.chansend, vim.v.stderr, seq)
+    if ok_chan and res and res > 0 then
+      return true
+    end
+  end
+
+  -- 4. Lua io.stdout fallback
+  local ok_stdout = pcall(function()
+    if io and io.stdout then
+      io.stdout:write(seq)
+      io.stdout:flush()
+      return true
+    end
+    return false
+  end)
+  if ok_stdout then
+    return true
+  end
+
+  -- 5. Lua io.stderr fallback
+  local ok_stderr = pcall(function()
+    if io and io.stderr then
+      io.stderr:write(seq)
+      io.stderr:flush()
+      return true
+    end
+    return false
+  end)
+  return ok_stderr or false
+end
+
+---Send an OSC desktop notification to the host terminal (Warp, Ghostty, WezTerm, iTerm2, etc.)
+---@param title string Notification title
+---@param body string Notification message body
+---@param term_mode? boolean|"auto"|"osc777"|"osc9" Terminal notification protocol (default: "auto" from config)
+---@return boolean success Whether an escape sequence was sent
+function M.send_terminal_notification(title, body, term_mode)
+  if term_mode == nil then
+    local opts = config.get()
+    term_mode = (opts.notifications and opts.notifications.terminal)
+    if term_mode == nil then
+      term_mode = "auto"
+    end
+  end
+
+  if term_mode == false then
+    return false
+  end
+
+  local proto = nil
+  if term_mode == "osc9" then
+    proto = "osc9"
+  elseif term_mode == "osc777" or term_mode == true then
+    proto = "osc777"
+  elseif term_mode == "auto" then
+    local term_prog = vim.env.TERM_PROGRAM or ""
+    local is_warp = term_prog == "WarpTerminal"
+      or vim.env.WARP_IS_TERM ~= nil
+      or vim.env.WARP_TERMINAL_SESSION_UUID ~= nil
+      or vim.env.WARP_CLIENT_VERSION ~= nil
+    local is_ghostty = term_prog == "ghostty" or vim.env.GHOSTTY_RESOURCES_DIR ~= nil
+    local is_wezterm = term_prog == "WezTerm" or vim.env.WEZTERM_PANE ~= nil
+    local is_iterm = term_prog == "iTerm.app"
+    local is_foot = vim.env.FOOT_SERVER_PATH ~= nil
+
+    if is_iterm then
+      proto = "osc9"
+    elseif is_warp or is_ghostty or is_wezterm or is_foot then
+      proto = "osc777"
+    end
+  end
+
+  if not proto then
+    return false
+  end
+
+  -- Sanitize title and body to prevent escaping or injection issues (strip ESC, BEL, semicolon, newlines)
+  local clean_title = tostring(title or ""):gsub("[\027\007;\r\n\t]", " ")
+  local clean_body = tostring(body or ""):gsub("[\027\007;\r\n\t]", " ")
+
+  local seq
+  if proto == "osc9" then
+    seq = string.format("\027]9;%s\007", clean_body)
+  else
+    seq = string.format("\027]777;notify;%s;%s\007", clean_title, clean_body)
+  end
+
+  -- If inside tmux, wrap in DCS pass-through sequence (requires `set -g allow-passthrough on` in tmux)
+  if vim.env.TMUX then
+    local escaped = seq:gsub("\027", "\027\027")
+    seq = "\027Ptmux;\027" .. escaped .. "\027\\"
+  end
+
+  return write_to_terminal(seq)
+end
+
 ---Handle background notifications when session status changes
 ---@param session Session
 ---@param new_status "running"|"idle"|"stopped"
@@ -210,11 +337,6 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       session._notify_timer:stop()
     end
 
-    -- Don't notify if the user is actively focused on this session's buffer
-    if M.is_focused(session) then
-      return
-    end
-
     local should_notify = notify_cfg.on_exit
     if should_notify == nil then
       should_notify = opts.notify_on_exit
@@ -228,25 +350,35 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       local msg = session.exit_code
           and string.format("Agent '%s' (%s) stopped with exit code %d", session.name, session.agent, session.exit_code)
         or string.format("Agent '%s' (%s) process stopped", session.name, session.agent)
-      vim.notify(msg, level, {
-        title = "Agent Session",
-        icon = "⚪",
-      })
+      local title = "Agent Session"
+
+      -- In-editor notification: only show if user is not actively focused on this session's buffer
+      if not M.is_focused(session) then
+        vim.notify(msg, level, {
+          title = title,
+          icon = "⚪",
+        })
+      end
+      -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
+      M.send_terminal_notification(title, msg, notify_cfg.terminal)
     end
     return
   end
 
   if new_status == "idle" and old_status == "running" then
-    -- Suppress notification on initial session spawn debounce
-    if session._is_initial then
+    local is_ready = (session._ready ~= false)
+    local is_busy = (session._busy == true)
+
+    -- If this is the initial startup debounce settling to idle, mark as ready and don't notify
+    if not is_ready or not is_busy or session._is_initial then
+      session._ready = true
+      session._busy = false
       session._is_initial = false
       return
     end
 
-    -- Don't notify if the user is actively focused on this session's buffer
-    if M.is_focused(session) then
-      return
-    end
+    -- Session was actively busy and has now completed its task/conversation
+    session._busy = false
 
     local should_notify = notify_cfg.on_idle
     if should_notify == nil then
@@ -260,28 +392,33 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       return
     end
 
-    local delay = notify_cfg.idle_delay
-    if delay == nil then
-      delay = 2500
-    end
+    local delay = notify_cfg.idle_delay or 0
 
     local function fire_idle_notification()
-      if session.status ~= "idle" or M.is_focused(session) then
+      if session.status ~= "idle" then
         return
       end
 
       local now = uv.now()
-      local cooldown = notify_cfg.cooldown or 5000
-      if session._last_notified_at and (now - session._last_notified_at < cooldown) then
+      local cooldown = notify_cfg.cooldown or 1000
+      if cooldown > 0 and session._last_notified_at and (now - session._last_notified_at < cooldown) then
         return
       end
       session._last_notified_at = now
 
       local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
-      vim.notify(msg, vim.log.levels.INFO, {
-        title = "Agent Session",
-        icon = "🤖",
-      })
+      local title = "Agent Session"
+
+      -- In-editor notification: only show if user is not actively focused on this session's buffer
+      if not M.is_focused(session) then
+        vim.notify(msg, vim.log.levels.INFO, {
+          title = title,
+          icon = "🤖",
+        })
+      end
+
+      -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
+      M.send_terminal_notification(title, msg, notify_cfg.terminal)
     end
 
     if delay <= 0 then
@@ -409,6 +546,8 @@ function M.create(name, agent_name)
     _saved_view = nil,
     _saved_mode = "t",
     _is_initial = true,
+    _ready = false,
+    _busy = false,
   }
 
   M._active_sessions[id] = session
@@ -472,6 +611,11 @@ function M.create(name, agent_name)
       -- If output arrives, cancel any pending delayed idle notification immediately
       if session._notify_timer and not session._notify_timer:is_closing() then
         session._notify_timer:stop()
+      end
+
+      -- If output arrives after the session has settled to ready, mark as active task running
+      if session._ready then
+        session._busy = true
       end
 
       -- If not already marked as running, switch to running
@@ -584,6 +728,8 @@ function M.send_text(id, text, submit)
   end
 
   session._is_initial = false
+  session._ready = true
+  session._busy = true
 
   if session.job_id > 0 then
     M.set_status(session, "running")

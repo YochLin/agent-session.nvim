@@ -26,8 +26,9 @@
 ---@field enabled? boolean Enable/disable all notifications (default: true)
 ---@field on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field on_exit? boolean Notify when a background session exits (default: true)
----@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 2500, suppresses subagent/tool pause flickers)
----@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 5000)
+---@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 0, immediate upon becoming idle)
+---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 1000)
+---@field terminal? boolean|"auto"|"osc777"|"osc9" Send desktop notifications to host terminal (e.g. Warp, WezTerm, Ghostty, iTerm2) via OSC sequence (default: "auto")
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
@@ -117,8 +118,9 @@ M.defaults = {
     enabled = true,
     on_idle = true,
     on_exit = true,
-    idle_delay = 2500, -- Milliseconds session must remain continuously idle before notifying (avoids subagent flickers)
-    cooldown = 5000, -- Minimum ms between consecutive notifications for the same session
+    idle_delay = 0, -- Milliseconds session must remain continuously idle before notifying (0 = immediate upon becoming idle)
+    cooldown = 1000, -- Minimum ms between consecutive notifications for the same session
+    terminal = "auto", -- "auto" (detects WarpTerminal, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
   },
   status_icons = {
     running = "⚡",
