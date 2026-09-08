@@ -346,19 +346,11 @@ function M._handle_status_notification(session, new_status, old_status, opts)
     end
 
     if should_notify then
-      local level = (session.exit_code and session.exit_code ~= 0) and vim.log.levels.WARN or vim.log.levels.INFO
       local msg = session.exit_code
           and string.format("Agent '%s' (%s) stopped with exit code %d", session.name, session.agent, session.exit_code)
         or string.format("Agent '%s' (%s) process stopped", session.name, session.agent)
       local title = "Agent Session"
 
-      -- In-editor notification: only show if user is not actively focused on this session's buffer
-      if not M.is_focused(session) then
-        vim.notify(msg, level, {
-          title = title,
-          icon = "⚪",
-        })
-      end
       -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
       M.send_terminal_notification(title, msg, notify_cfg.terminal)
     end
@@ -408,14 +400,6 @@ function M._handle_status_notification(session, new_status, old_status, opts)
 
       local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
       local title = "Agent Session"
-
-      -- In-editor notification: only show if user is not actively focused on this session's buffer
-      if not M.is_focused(session) then
-        vim.notify(msg, vim.log.levels.INFO, {
-          title = title,
-          icon = "🤖",
-        })
-      end
 
       -- Host terminal desktop notification (e.g. Warp, Ghostty): terminal emulator handles OS-level focus
       M.send_terminal_notification(title, msg, notify_cfg.terminal)
