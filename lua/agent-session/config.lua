@@ -26,8 +26,9 @@
 ---@field enabled? boolean Enable/disable all notifications (default: true)
 ---@field on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field on_exit? boolean Notify when a background session exits (default: true)
----@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 0, immediate upon becoming idle)
----@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 1000)
+---@field idle_delay? number Milliseconds session must remain continuously idle before notifying (default: 2000)
+---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 4000)
+---@field unfocused_only? boolean Only send desktop notifications when session is unfocused or Neovim is in background (default: true)
 ---@field terminal? boolean|"auto"|"osc777"|"osc9" Send desktop notifications to host terminal (e.g. Warp, WezTerm, Ghostty, iTerm2) via OSC sequence (default: "auto")
 ---@field system? boolean|"auto" Send OS-native desktop notification (macOS osascript, Linux notify-send) (default: "auto", used as fallback when terminal OSC unsupported)
 
@@ -112,15 +113,16 @@ M.defaults = {
     interval = 80, -- ms between frames
     frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
   },
-  idle_timeout = 800, -- Milliseconds of silence before marking session as idle
+  idle_timeout = 1500, -- Milliseconds of silence before marking session as idle
   notify_on_idle = true, -- Notify when a background session transitions to idle
   notify_on_exit = true, -- Notify when a background session process exits
   notifications = {
     enabled = true,
     on_idle = true,
     on_exit = true,
-    idle_delay = 0, -- Milliseconds session must remain continuously idle before notifying (0 = immediate upon becoming idle)
-    cooldown = 1000, -- Minimum ms between consecutive notifications for the same session
+    idle_delay = 2000, -- Milliseconds session must remain continuously idle before notifying (avoids subagent/tool pause flickers)
+    cooldown = 4000, -- Minimum ms between consecutive notifications for the same session
+    unfocused_only = true, -- Only notify when session is unfocused or Neovim is in the background
     terminal = "auto", -- "auto" (detects WarpTerminal, WezTerm, Ghostty, iTerm2), true, "osc777", "osc9", or false
     system = "auto", -- "auto" (fallback to osascript/notify-send if terminal OSC unsupported), true, or false
   },
