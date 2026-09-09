@@ -63,11 +63,36 @@ M.defaults = {
   session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
   default_agent = "claude",
   agent_icons = {
+    -- Anthropic
     claude = "✻",
+    -- Google Antigravity & Gemini
     agy = "",
-    codex = "󰡨",
+    antigravity = "",
     gemini = "󰛄",
+    -- OpenAI
+    codex = "󰡨",
+    chatgpt = "󰡨",
+    openai = "󰡨",
+    -- DeepSeek
+    dsh = "🐋",
+    deepseek = "🐋",
+    -- Pi / Oh My Pi Agent
+    pi = "π",
+    omp = "π",
+    ["oh-my-pi"] = "π",
+    -- Moonshot AI / Kimi
+    kimi = "🌙",
+    moonshot = "🌙",
+    -- GitHub Copilot
+    copilot = "",
+    -- Aider
+    aider = "🤖",
+    -- Qwen
+    qwen = "󰊤",
+    -- Shell
     sh = "",
+    bash = "",
+    zsh = "",
   },
   agents = {
     claude = {
@@ -93,6 +118,48 @@ M.defaults = {
       args = {},
       env = {},
       icon = "󰛄",
+    },
+    dsh = {
+      cmd = "dsh",
+      args = {},
+      env = {},
+      icon = "🐋",
+    },
+    deepseek = {
+      cmd = "deepseek",
+      args = {},
+      env = {},
+      icon = "🐋",
+    },
+    pi = {
+      cmd = "pi",
+      args = {},
+      env = {},
+      icon = "π",
+    },
+    omp = {
+      cmd = "omp",
+      args = {},
+      env = {},
+      icon = "π",
+    },
+    kimi = {
+      cmd = "kimi",
+      args = {},
+      env = {},
+      icon = "🌙",
+    },
+    copilot = {
+      cmd = "copilot",
+      args = {},
+      env = {},
+      icon = "",
+    },
+    aider = {
+      cmd = "aider",
+      args = {},
+      env = {},
+      icon = "🤖",
     },
     sh = {
       cmd = vim.o.shell,
@@ -201,8 +268,31 @@ function M.get_agent_icon(agent_name)
     return M.defaults.agent_icons[agent_name]
   end
 
-  -- 4. Fuzzy fallback if agent_name contains a known agent keyword
+  -- 4. Specific alias / keyword checks
   local lower = agent_name:lower()
+  if lower:find("claude", 1, true) then
+    return M.defaults.agent_icons.claude or "✻"
+  elseif lower:find("agy", 1, true) or lower:find("antigravity", 1, true) then
+    return M.defaults.agent_icons.agy or ""
+  elseif lower:find("deepseek", 1, true) or lower:find("dsh", 1, true) then
+    return M.defaults.agent_icons.deepseek or "🐋"
+  elseif lower:find("oh%-my%-pi") or lower:find("omp", 1, true) or lower:find("pi", 1, true) then
+    return M.defaults.agent_icons.pi or "π"
+  elseif lower:find("kimi", 1, true) or lower:find("moonshot", 1, true) then
+    return M.defaults.agent_icons.kimi or "🌙"
+  elseif lower:find("copilot", 1, true) then
+    return M.defaults.agent_icons.copilot or ""
+  elseif lower:find("codex", 1, true) or lower:find("chatgpt", 1, true) or lower:find("openai", 1, true) then
+    return M.defaults.agent_icons.codex or "󰡨"
+  elseif lower:find("gemini", 1, true) then
+    return M.defaults.agent_icons.gemini or "󰛄"
+  elseif lower:find("aider", 1, true) then
+    return M.defaults.agent_icons.aider or "🤖"
+  elseif lower:find("qwen", 1, true) then
+    return M.defaults.agent_icons.qwen or "󰊤"
+  end
+
+  -- 5. Fuzzy fallback if agent_name contains a known agent keyword
   for known, icon in pairs(M.defaults.agent_icons or {}) do
     if lower:find(known, 1, true) then
       return icon
