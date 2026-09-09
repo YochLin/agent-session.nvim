@@ -103,7 +103,9 @@ function M.render()
       local is_current = cur_sess and cur_sess.id == s.id
       local prefix = is_current and " ➜ " or "   "
       local icon = get_icon(s.status)
-      local line_text = string.format("%s%s %-12s [%s]", prefix, icon, s.name, s.agent)
+      local agent_icon = config.get_agent_icon(s.agent)
+      local agent_label = agent_icon ~= "" and (agent_icon .. " " .. s.agent) or s.agent
+      local line_text = string.format("%s%s %-12s [%s]", prefix, icon, s.name, agent_label)
 
       table.insert(lines, line_text)
       local line_idx = #lines
@@ -125,7 +127,9 @@ function M.render()
 
     for _, s in ipairs(stopped_sessions) do
       local icon = get_icon(s.status)
-      local line_text = string.format("   %s %-12s [%s]", icon, s.name, s.agent)
+      local agent_icon = config.get_agent_icon(s.agent)
+      local agent_label = agent_icon ~= "" and (agent_icon .. " " .. s.agent) or s.agent
+      local line_text = string.format("   %s %-12s [%s]", icon, s.name, agent_label)
       table.insert(lines, line_text)
       local line_idx = #lines
       M._line_map[line_idx] = s.id

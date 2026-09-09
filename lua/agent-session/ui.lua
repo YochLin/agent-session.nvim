@@ -219,11 +219,13 @@ function M.format_float_title_chunks(current_session)
       return { { ui_opts.title or " Agent Session ", "AgentSessionTabSel" } }
     end
     local icon = M.get_status_icon(current_session.status)
+    local agent_icon = config.get_agent_icon(current_session.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local text = string.format(
       " %s[%s] %s %s ",
       ui_opts.title or "Agent Session",
       current_session.name,
-      icon,
+      icon_segment,
       current_session.status
     )
     return { { text, "AgentSessionTabSel" } }
@@ -244,12 +246,14 @@ function M.format_float_title_chunks(current_session)
     end
 
     local icon = M.get_status_icon(s.status)
+    local agent_icon = config.get_agent_icon(s.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local is_active = current_session and (s.id == current_session.id)
     if is_active then
-      local tab_text = string.format(" [ %s %d:%s ] ", icon, i, s.name)
+      local tab_text = string.format(" [ %s %d:%s ] ", icon_segment, i, s.name)
       table.insert(chunks, { tab_text, "AgentSessionTabSel" })
     else
-      local tab_text = string.format(" %s %d:%s ", icon, i, s.name)
+      local tab_text = string.format(" %s %d:%s ", icon_segment, i, s.name)
       table.insert(chunks, { tab_text, "AgentSessionTab" })
     end
   end
@@ -271,11 +275,13 @@ function M.format_winbar(current_session)
       return "%=" .. (ui_opts.title or " Agent Session ") .. "%="
     end
     local icon = M.get_status_icon(current_session.status)
+    local agent_icon = config.get_agent_icon(current_session.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local text = string.format(
       " %s[%s] %s %s ",
       ui_opts.title or "Agent Session",
       current_session.name,
-      icon,
+      icon_segment,
       current_session.status
     )
     return "%=" .. text .. "%="
@@ -294,11 +300,13 @@ function M.format_winbar(current_session)
     end
 
     local icon = M.get_status_icon(s.status)
+    local agent_icon = config.get_agent_icon(s.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local is_active = current_session and (s.id == current_session.id)
     if is_active then
-      table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon, i, s.name))
+      table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon_segment, i, s.name))
     else
-      table.insert(parts, string.format("%%#AgentSessionTab# %s %d:%s ", icon, i, s.name))
+      table.insert(parts, string.format("%%#AgentSessionTab# %s %d:%s ", icon_segment, i, s.name))
     end
   end
 
@@ -317,8 +325,10 @@ function M.format_title(session)
       return ui_opts.title or " Agent Session "
     end
     local icon = M.get_status_icon(session.status)
+    local agent_icon = config.get_agent_icon(session.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local base_title = ui_opts.title or " Agent Session "
-    return string.format("%s[%s] %s %s ", base_title, session.name, icon, session.status)
+    return string.format("%s[%s] %s %s ", base_title, session.name, icon_segment, session.status)
   end
 
   local ordered = session_mod.get_ordered()
@@ -329,11 +339,13 @@ function M.format_title(session)
   local parts = {}
   for i, s in ipairs(ordered) do
     local icon = M.get_status_icon(s.status)
+    local agent_icon = config.get_agent_icon(s.agent)
+    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
     local is_active = session and (s.id == session.id)
     if is_active then
-      table.insert(parts, string.format("[%s %d:%s]", icon, i, s.name))
+      table.insert(parts, string.format("[%s %d:%s]", icon_segment, i, s.name))
     else
-      table.insert(parts, string.format("%s %d:%s", icon, i, s.name))
+      table.insert(parts, string.format("%s %d:%s", icon_segment, i, s.name))
     end
   end
 
@@ -789,7 +801,9 @@ function M.select_session(on_select, opts_or_prompt)
     local icon = M.get_status_icon(sess.status)
     local is_current = cur_sess and cur_sess.id == sess.id
     local prefix = is_current and "➜ " or "  "
-    local label = string.format("%s[%s %s] %s (%s) - %s", prefix, icon, sess.status, sess.name, sess.agent, sess.id)
+    local agent_icon = config.get_agent_icon(sess.agent)
+    local agent_label = agent_icon ~= "" and (agent_icon .. " " .. sess.agent) or sess.agent
+    local label = string.format("%s[%s %s] %s (%s) - %s", prefix, icon, sess.status, sess.name, agent_label, sess.id)
     table.insert(items, label)
     session_lookup[label] = sess
   end
@@ -826,6 +840,10 @@ function M.select_agent(on_select)
 
   vim.ui.select(items, {
     prompt = "Select AI Agent to Launch:",
+    format_item = function(item)
+      local icon = config.get_agent_icon(item)
+      return icon ~= "" and (icon .. " " .. item) or item
+    end,
   }, function(choice)
     if choice and on_select then
       on_select(choice)

@@ -454,9 +454,17 @@ function M._handle_status_notification(session, new_status, old_status, opts)
     end
 
     if should_notify then
+      local agent_icon = config.get_agent_icon(session.agent)
+      local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
       local msg = session.exit_code
-          and string.format("Agent '%s' (%s) stopped with exit code %d", session.name, session.agent, session.exit_code)
-        or string.format("Agent '%s' (%s) process stopped", session.name, session.agent)
+          and string.format(
+            "%sAgent '%s' (%s) stopped with exit code %d",
+            icon_prefix,
+            session.name,
+            session.agent,
+            session.exit_code
+          )
+        or string.format("%sAgent '%s' (%s) process stopped", icon_prefix, session.name, session.agent)
       local title = "Agent Session"
 
       -- Dispatch desktop notification (terminal OSC with OS-native fallback)
@@ -506,7 +514,9 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       end
       session._last_notified_at = now
 
-      local msg = string.format("🤖 Agent '%s' (%s) has finished task!", session.name, session.agent)
+      local agent_icon = config.get_agent_icon(session.agent)
+      local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or "🤖 "
+      local msg = string.format("%sAgent '%s' (%s) has finished task!", icon_prefix, session.name, session.agent)
       local title = "Agent Session"
 
       -- Dispatch desktop notification (terminal OSC with OS-native fallback)

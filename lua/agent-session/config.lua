@@ -2,6 +2,7 @@
 ---@field session_dir? string Directory to save session metadata and logs
 ---@field default_agent? string Default agent type (e.g. "claude", "custom")
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
+---@field agent_icons? table<string, string> Icon mappings per agent CLI type (e.g. { claude = "✻", agy = "" })
 ---@field keymaps? AgentSessionKeymapsConfig Global keymaps working seamlessly across normal & terminal mode
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
 ---@field spinner? AgentSessionSpinnerConfig Animated spinner settings
@@ -35,6 +36,7 @@
 ---@field cmd string|string[] Base command or function to launch agent
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
+---@field icon? string Icon or logo symbol for this agent CLI (e.g. "✻", "", "󰡨")
 
 ---@class AgentSessionTerminalMappingsConfig
 ---@field enabled? boolean Enable buffer-local terminal mode escape keymap (default: true)
@@ -60,31 +62,43 @@ local M = {}
 M.defaults = {
   session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
   default_agent = "claude",
+  agent_icons = {
+    claude = "✻",
+    agy = "",
+    codex = "󰡨",
+    gemini = "󰛄",
+    sh = "",
+  },
   agents = {
     claude = {
       cmd = "claude",
       args = {},
       env = {},
+      icon = "✻",
     },
     agy = {
       cmd = "agy",
       args = {},
       env = {},
+      icon = "",
     },
     codex = {
       cmd = "codex",
       args = {},
       env = {},
+      icon = "󰡨",
     },
     gemini = {
       cmd = "gemini",
       args = {},
       env = {},
+      icon = "󰛄",
     },
     sh = {
       cmd = vim.o.shell,
       args = {},
       env = {},
+      icon = "",
     },
   },
   ui = {
@@ -159,6 +173,43 @@ function M.get()
     M.options = vim.deepcopy(M.defaults)
   end
   return M.options
+end
+
+---Get the display icon for an agent CLI
+---@param agent_name? string
+---@return string icon Empty string if no icon found or configured
+function M.get_agent_icon(agent_name)
+  if not agent_name or agent_name == "" then
+    return ""
+  end
+
+  local opts = M.get()
+  -- 1. Check agent definition in opts.agents
+  if opts.agents and opts.agents[agent_name] and opts.agents[agent_name].icon ~= nil then
+    local icon = opts.agents[agent_name].icon
+    return (type(icon) == "string") and icon or ""
+  end
+
+  -- 2. Check top-level opts.agent_icons
+  if opts.agent_icons and opts.agent_icons[agent_name] ~= nil then
+    local icon = opts.agent_icons[agent_name]
+    return (type(icon) == "string") and icon or ""
+  end
+
+  -- 3. Check defaults table
+  if M.defaults.agent_icons and M.defaults.agent_icons[agent_name] then
+    return M.defaults.agent_icons[agent_name]
+  end
+
+  -- 4. Fuzzy fallback if agent_name contains a known agent keyword
+  local lower = agent_name:lower()
+  for known, icon in pairs(M.defaults.agent_icons or {}) do
+    if lower:find(known, 1, true) then
+      return icon
+    end
+  end
+
+  return ""
 end
 
 return M
