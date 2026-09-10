@@ -57,13 +57,14 @@ Default options: >lua
           escape = "<C-\\><C-\\>",
         },
       },
-      idle_timeout = 800,
+      idle_timeout = 1500,
       notifications = {
         enabled = true,
         on_idle = true,
         on_exit = true,
-        idle_delay = 0,
-        cooldown = 1000,
+        idle_delay = 2000,
+        cooldown = 4000,
+        unfocused_only = true,
         terminal = "auto",
       },
     })

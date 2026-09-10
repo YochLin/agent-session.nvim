@@ -20,6 +20,7 @@ local M = {}
 ---@field _is_initial boolean|nil Whether this is the initial startup before any task
 ---@field _ready boolean|nil Whether startup has settled and session is ready for tasks
 ---@field _busy boolean|nil Whether an active task is running (set on input/output after ready)
+---@field _user_submitted boolean|nil Whether user explicitly submitted input (via Enter or send_text)
 
 ---@type table<string, Session>
 M._active_sessions = {}
@@ -183,6 +184,17 @@ function M.is_focused(session)
     return false
   end
   return vim.api.nvim_get_current_buf() == session.bufnr
+end
+
+---Check if session buffer is currently open and visible in any window of the current tabpage
+---@param session Session
+---@return boolean
+function M.is_visible(session)
+  if not session or not session.bufnr or not vim.api.nvim_buf_is_valid(session.bufnr) then
+    return false
+  end
+  local win = vim.fn.bufwinid(session.bufnr)
+  return win ~= nil and win ~= -1
 end
 
 ---Write raw escape sequence to host terminal
@@ -440,9 +452,19 @@ function M._handle_status_notification(session, new_status, old_status, opts)
     return
   end
 
+  local unfocused_only = notify_cfg.unfocused_only
+  if unfocused_only == nil then
+    unfocused_only = true
+  end
+
   if new_status == "stopped" then
     if session._notify_timer and not session._notify_timer:is_closing() then
       session._notify_timer:stop()
+    end
+
+    -- If session is open/visible in the same window (or split), suppress notification
+    if unfocused_only and M.is_visible(session) then
+      return
     end
 
     local should_notify = notify_cfg.on_exit
@@ -477,8 +499,13 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       return
     end
 
-    -- Session was actively busy and has now completed its task/conversation
+    -- Mark task as completed so idle redraws/blinks won't trigger notifications
     session._busy = false
+
+    -- If session is open/visible in the same window (or split), suppress notification
+    if unfocused_only and M.is_visible(session) then
+      return
+    end
 
     local should_notify = notify_cfg.on_idle
     if should_notify == nil then
@@ -492,15 +519,23 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       return
     end
 
-    local delay = notify_cfg.idle_delay or 0
+    local delay = notify_cfg.idle_delay
+    if delay == nil then
+      delay = 2000
+    end
 
     local function fire_idle_notification()
       if session.status ~= "idle" then
         return
       end
 
+      -- If session is open/visible in the same window (or split), suppress notification
+      if unfocused_only and M.is_visible(session) then
+        return
+      end
+
       local now = uv.now()
-      local cooldown = notify_cfg.cooldown or 1000
+      local cooldown = notify_cfg.cooldown or 4000
       if cooldown > 0 and session._last_notified_at and (now - session._last_notified_at < cooldown) then
         return
       end
@@ -640,10 +675,25 @@ function M.create(name, agent_name)
     _is_initial = true,
     _ready = false,
     _busy = false,
+    _user_submitted = false,
   }
 
   M._active_sessions[id] = session
   M._current_session_id = id
+
+  -- When user submits input in terminal mode (Enter / Ctrl-m), mark task as active
+  local function on_terminal_submit()
+    session._user_submitted = true
+    session._ready = true
+    session._busy = true
+    if session.status ~= "running" then
+      M.set_status(session, "running")
+    end
+    return "<CR>"
+  end
+
+  vim.keymap.set("t", "<CR>", on_terminal_submit, { buffer = bufnr, expr = true })
+  vim.keymap.set("t", "<C-m>", on_terminal_submit, { buffer = bufnr, expr = true })
 
   -- Track mode and view changes on session buffer
   vim.api.nvim_create_autocmd("TermEnter", {
@@ -695,7 +745,7 @@ function M.create(name, agent_name)
 
   -- Monitor terminal output activity to detect running vs idle
   vim.api.nvim_buf_attach(bufnr, false, {
-    on_lines = function()
+    on_lines = function(_, _, _, firstline, lastline, new_lastline)
       if session.status == "stopped" then
         return
       end
@@ -704,6 +754,22 @@ function M.create(name, agent_name)
       if session._notify_timer and not session._notify_timer:is_closing() then
         session._notify_timer:stop()
       end
+
+      -- If user is typing in terminal mode before submission on an idle session,
+      -- ignore local character echoes so typing does not flip status to running.
+      local is_user_typing = (
+        session.status == "idle"
+        and session._ready
+        and vim.api.nvim_get_current_buf() == bufnr
+        and vim.api.nvim_get_mode().mode:sub(1, 1) == "t"
+        and not session._user_submitted
+      )
+
+      if is_user_typing then
+        return
+      end
+
+      session._user_submitted = false
 
       -- If output arrives after the session has settled to ready, mark as active task running
       if session._ready then
@@ -716,10 +782,11 @@ function M.create(name, agent_name)
       end
 
       -- Reset idle debounce timer
+      local idle_timeout = opts.idle_timeout or 1500
       if timer and not timer:is_closing() then
         timer:stop()
         timer:start(
-          opts.idle_timeout or 800,
+          idle_timeout,
           0,
           vim.schedule_wrap(function()
             if session.status == "running" then
@@ -758,7 +825,7 @@ function M.create(name, agent_name)
     -- Start initial debounce timer so startup settles to idle
     if timer and not timer:is_closing() then
       timer:start(
-        opts.idle_timeout or 800,
+        opts.idle_timeout or 1500,
         0,
         vim.schedule_wrap(function()
           if session.status == "running" then
@@ -820,11 +887,15 @@ function M.send_text(id, text, submit)
   end
 
   session._is_initial = false
-  session._ready = true
-  session._busy = true
+
+  if submit then
+    session._ready = true
+    session._busy = true
+    session._user_submitted = true
+    M.set_status(session, "running")
+  end
 
   if session.job_id > 0 then
-    M.set_status(session, "running")
     vim.fn.chansend(session.job_id, submit and (text .. "\n") or text)
   end
 end
