@@ -460,7 +460,7 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       elseif type(notify_cfg.exit_message) == "string" then
         msg = notify_cfg.exit_message:gsub("%%agent", session.agent):gsub("%%name", session.name)
       else
-        local agent_icon = config.get_agent_icon(session.agent)
+        local agent_icon = config.get_notification_icon(session.agent)
         local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
         local agent_str = (session.name == session.agent) and session.agent
           or string.format("%s '%s'", session.agent, session.name)
@@ -523,7 +523,7 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       elseif type(notify_cfg.idle_message) == "string" then
         msg = notify_cfg.idle_message:gsub("%%agent", session.agent):gsub("%%name", session.name)
       else
-        local agent_icon = config.get_agent_icon(session.agent)
+        local agent_icon = config.get_notification_icon(session.agent)
         local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
         local agent_str = (session.name == session.agent) and session.agent
           or string.format("%s '%s'", session.agent, session.name)

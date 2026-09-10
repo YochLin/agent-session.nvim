@@ -304,4 +304,77 @@ function M.get_agent_icon(agent_name)
   return ""
 end
 
+local safe_notification_fallbacks = {
+  claude = "✻",
+  agy = "🚀",
+  antigravity = "🚀",
+  codex = "🤖",
+  chatgpt = "🤖",
+  openai = "🤖",
+  gemini = "✨",
+  dsh = "🐋",
+  deepseek = "🐋",
+  pi = "π",
+  omp = "π",
+  ["oh-my-pi"] = "π",
+  kimi = "🌙",
+  moonshot = "🌙",
+  copilot = "🤖",
+  aider = "🤖",
+  qwen = "🪙",
+  sh = "💻",
+  bash = "💻",
+  zsh = "💻",
+}
+
+---Check if a string contains Unicode Private Use Area (PUA) characters (e.g. Nerd Font glyphs)
+---which cannot be rendered by OS system notification fonts (causing question marks [?]).
+---@param str string
+---@return boolean
+function M.is_pua(str)
+  if not str or str == "" then
+    return false
+  end
+  for _, ch in ipairs(vim.fn.split(str, "\\zs")) do
+    local cp = vim.fn.char2nr(ch)
+    if (cp >= 0xE000 and cp <= 0xF8FF) or (cp >= 0xF0000 and cp <= 0x10FFFD) then
+      return true
+    end
+  end
+  return false
+end
+
+---Get an OS-safe icon for desktop notifications (avoids question mark [?] on macOS / Linux / Windows)
+---@param agent_name? string
+---@return string
+function M.get_notification_icon(agent_name)
+  if not agent_name or agent_name == "" then
+    return ""
+  end
+
+  local opts = M.get()
+  local notify_cfg = opts.notifications or {}
+
+  -- 1. Explicit user override in notifications.agent_icons
+  if notify_cfg.agent_icons and notify_cfg.agent_icons[agent_name] ~= nil then
+    return notify_cfg.agent_icons[agent_name]
+  end
+
+  -- 2. Check standard agent icon from config if safe
+  local icon = M.get_agent_icon(agent_name)
+  if icon ~= "" and not M.is_pua(icon) then
+    return icon
+  end
+
+  -- 3. Fallback to notification-safe mapping (standard Unicode / emojis)
+  local lower = agent_name:lower()
+  for name, safe_icon in pairs(safe_notification_fallbacks) do
+    if lower == name or lower:find(name, 1, true) then
+      return safe_icon
+    end
+  end
+
+  return "🤖"
+end
+
 return M
