@@ -2,6 +2,7 @@
 ---@field session_dir? string Directory to save session metadata and logs
 ---@field default_agent? string Default agent type (e.g. "claude", "custom")
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
+---@field agent_icons? table<string, string> Icon mappings per agent CLI type (e.g. { claude = "✻", agy = "" })
 ---@field keymaps? AgentSessionKeymapsConfig Global keymaps working seamlessly across normal & terminal mode
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
 ---@field spinner? AgentSessionSpinnerConfig Animated spinner settings
@@ -31,11 +32,14 @@
 ---@field unfocused_only? boolean Only send desktop notifications when session is unfocused or Neovim is in background (default: true)
 ---@field terminal? boolean|"auto"|"osc777"|"osc9" Send desktop notifications to host terminal (e.g. Warp, WezTerm, Ghostty, iTerm2) via OSC sequence (default: "auto")
 ---@field system? boolean|"auto" Send OS-native desktop notification (macOS osascript, Linux notify-send) (default: "auto", used as fallback when terminal OSC unsupported)
+---@field idle_message? string|fun(session: Session):string Custom message template or function for idle notifications
+---@field exit_message? string|fun(session: Session):string Custom message template or function for process exit notifications
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
+---@field icon? string Icon or logo symbol for this agent CLI (e.g. "✻", "", "󰡨")
 
 ---@class AgentSessionTerminalMappingsConfig
 ---@field enabled? boolean Enable buffer-local terminal mode escape keymap (default: true)
@@ -61,31 +65,110 @@ local M = {}
 M.defaults = {
   session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
   default_agent = "claude",
+  agent_icons = {
+    -- Anthropic
+    claude = "✻",
+    -- Google Antigravity & Gemini
+    agy = "",
+    antigravity = "",
+    gemini = "󰛄",
+    -- OpenAI
+    codex = "󰡨",
+    chatgpt = "󰡨",
+    openai = "󰡨",
+    -- DeepSeek
+    dsh = "🐋",
+    deepseek = "🐋",
+    -- Pi / Oh My Pi Agent
+    pi = "π",
+    omp = "π",
+    ["oh-my-pi"] = "π",
+    -- Moonshot AI / Kimi
+    kimi = "🌙",
+    moonshot = "🌙",
+    -- GitHub Copilot
+    copilot = "",
+    -- Aider
+    aider = "🤖",
+    -- Qwen
+    qwen = "󰊤",
+    -- Shell
+    sh = "",
+    bash = "",
+    zsh = "",
+  },
   agents = {
     claude = {
       cmd = "claude",
       args = {},
       env = {},
+      icon = "✻",
     },
     agy = {
       cmd = "agy",
       args = {},
       env = {},
+      icon = "",
     },
     codex = {
       cmd = "codex",
       args = {},
       env = {},
+      icon = "󰡨",
     },
     gemini = {
       cmd = "gemini",
       args = {},
       env = {},
+      icon = "󰛄",
+    },
+    dsh = {
+      cmd = "dsh",
+      args = {},
+      env = {},
+      icon = "🐋",
+    },
+    deepseek = {
+      cmd = "deepseek",
+      args = {},
+      env = {},
+      icon = "🐋",
+    },
+    pi = {
+      cmd = "pi",
+      args = {},
+      env = {},
+      icon = "π",
+    },
+    omp = {
+      cmd = "omp",
+      args = {},
+      env = {},
+      icon = "π",
+    },
+    kimi = {
+      cmd = "kimi",
+      args = {},
+      env = {},
+      icon = "🌙",
+    },
+    copilot = {
+      cmd = "copilot",
+      args = {},
+      env = {},
+      icon = "",
+    },
+    aider = {
+      cmd = "aider",
+      args = {},
+      env = {},
+      icon = "🤖",
     },
     sh = {
       cmd = vim.o.shell,
       args = {},
       env = {},
+      icon = "",
     },
   },
   ui = {
@@ -161,6 +244,139 @@ function M.get()
     M.options = vim.deepcopy(M.defaults)
   end
   return M.options
+end
+
+---Get the display icon for an agent CLI
+---@param agent_name? string
+---@return string icon Empty string if no icon found or configured
+function M.get_agent_icon(agent_name)
+  if not agent_name or agent_name == "" then
+    return ""
+  end
+
+  local opts = M.get()
+  -- 1. Check agent definition in opts.agents
+  if opts.agents and opts.agents[agent_name] and opts.agents[agent_name].icon ~= nil then
+    local icon = opts.agents[agent_name].icon
+    return (type(icon) == "string") and icon or ""
+  end
+
+  -- 2. Check top-level opts.agent_icons
+  if opts.agent_icons and opts.agent_icons[agent_name] ~= nil then
+    local icon = opts.agent_icons[agent_name]
+    return (type(icon) == "string") and icon or ""
+  end
+
+  -- 3. Check defaults table
+  if M.defaults.agent_icons and M.defaults.agent_icons[agent_name] then
+    return M.defaults.agent_icons[agent_name]
+  end
+
+  -- 4. Specific alias / keyword checks
+  local lower = agent_name:lower()
+  if lower:find("claude", 1, true) then
+    return M.defaults.agent_icons.claude or "✻"
+  elseif lower:find("agy", 1, true) or lower:find("antigravity", 1, true) then
+    return M.defaults.agent_icons.agy or ""
+  elseif lower:find("deepseek", 1, true) or lower:find("dsh", 1, true) then
+    return M.defaults.agent_icons.deepseek or "🐋"
+  elseif lower:find("oh%-my%-pi") or lower:find("omp", 1, true) or lower:find("pi", 1, true) then
+    return M.defaults.agent_icons.pi or "π"
+  elseif lower:find("kimi", 1, true) or lower:find("moonshot", 1, true) then
+    return M.defaults.agent_icons.kimi or "🌙"
+  elseif lower:find("copilot", 1, true) then
+    return M.defaults.agent_icons.copilot or ""
+  elseif lower:find("codex", 1, true) or lower:find("chatgpt", 1, true) or lower:find("openai", 1, true) then
+    return M.defaults.agent_icons.codex or "󰡨"
+  elseif lower:find("gemini", 1, true) then
+    return M.defaults.agent_icons.gemini or "󰛄"
+  elseif lower:find("aider", 1, true) then
+    return M.defaults.agent_icons.aider or "🤖"
+  elseif lower:find("qwen", 1, true) then
+    return M.defaults.agent_icons.qwen or "󰊤"
+  end
+
+  -- 5. Fuzzy fallback if agent_name contains a known agent keyword
+  for known, icon in pairs(M.defaults.agent_icons or {}) do
+    if lower:find(known, 1, true) then
+      return icon
+    end
+  end
+
+  return ""
+end
+
+local safe_notification_fallbacks = {
+  claude = "✻",
+  agy = "🚀",
+  antigravity = "🚀",
+  codex = "🤖",
+  chatgpt = "🤖",
+  openai = "🤖",
+  gemini = "✨",
+  dsh = "🐋",
+  deepseek = "🐋",
+  pi = "π",
+  omp = "π",
+  ["oh-my-pi"] = "π",
+  kimi = "🌙",
+  moonshot = "🌙",
+  copilot = "🤖",
+  aider = "🤖",
+  qwen = "🪙",
+  sh = "💻",
+  bash = "💻",
+  zsh = "💻",
+}
+
+---Check if a string contains Unicode Private Use Area (PUA) characters (e.g. Nerd Font glyphs)
+---which cannot be rendered by OS system notification fonts (causing question marks [?]).
+---@param str string
+---@return boolean
+function M.is_pua(str)
+  if not str or str == "" then
+    return false
+  end
+  for _, ch in ipairs(vim.fn.split(str, "\\zs")) do
+    local cp = vim.fn.char2nr(ch)
+    if (cp >= 0xE000 and cp <= 0xF8FF) or (cp >= 0xF0000 and cp <= 0x10FFFD) then
+      return true
+    end
+  end
+  return false
+end
+
+---Get an OS-safe icon for desktop notifications (avoids question mark [?] on macOS / Linux / Windows)
+---@param agent_name? string
+---@return string
+function M.get_notification_icon(agent_name)
+  if not agent_name or agent_name == "" then
+    return ""
+  end
+
+  local opts = M.get()
+  local notify_cfg = opts.notifications or {}
+
+  -- 1. Explicit user override in notifications.agent_icons
+  if notify_cfg.agent_icons and notify_cfg.agent_icons[agent_name] ~= nil then
+    return notify_cfg.agent_icons[agent_name]
+  end
+
+  -- 2. Check standard agent icon from config if safe
+  local icon = M.get_agent_icon(agent_name)
+  if icon ~= "" and not M.is_pua(icon) then
+    return icon
+  end
+
+  -- 3. Fallback to notification-safe mapping (standard Unicode / emojis)
+  local lower = agent_name:lower()
+  for name, safe_icon in pairs(safe_notification_fallbacks) do
+    if lower == name or lower:find(name, 1, true) then
+      return safe_icon
+    end
+  end
+
+  return "🤖"
 end
 
 return M

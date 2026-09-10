@@ -39,11 +39,26 @@ Default options: >lua
     require("agent-session").setup({
       session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
       default_agent = "claude",
+      agent_icons = {
+        claude = "✻",
+        agy = "",
+        codex = "󰡨",
+        gemini = "󰛄",
+        dsh = "🐋",
+        deepseek = "🐋",
+        pi = "π",
+        omp = "π",
+        kimi = "🌙",
+        copilot = "",
+        aider = "🤖",
+        sh = "",
+      },
       agents = {
         claude = {
           cmd = "claude",
           args = {},
           env = {},
+          icon = "✻",
         },
       },
       ui = {

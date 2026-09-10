@@ -71,11 +71,11 @@ return {
   opts = {
     default_agent = "agy", -- "claude" | "agy" | "codex" | "gemini" | "sh"
     agents = {
-      claude = { cmd = "claude", args = {}, env = {} },
-      agy = { cmd = "agy", args = {}, env = {} },
-      codex = { cmd = "codex", args = {}, env = {} },
-      gemini = { cmd = "gemini", args = {}, env = {} },
-      sh = { cmd = vim.o.shell, args = {}, env = {} },
+      claude = { cmd = "claude", args = {}, env = {}, icon = "✻" },
+      agy = { cmd = "agy", args = {}, env = {}, icon = "" },
+      codex = { cmd = "codex", args = {}, env = {}, icon = "󰡨" },
+      gemini = { cmd = "gemini", args = {}, env = {}, icon = "󰛄" },
+      sh = { cmd = vim.o.shell, args = {}, env = {}, icon = "" },
     },
     ui = {
       position = "vsplit", -- "float" | "split" | "vsplit"
@@ -139,12 +139,33 @@ You can display the active agent session status in your statusline:
 require("agent-session").setup({
   session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
   default_agent = "claude",
+  agent_icons = {
+    claude = "✻",
+    agy = "",
+    codex = "󰡨",
+    gemini = "󰛄",
+    dsh = "🐋",
+    deepseek = "🐋",
+    pi = "π",
+    omp = "π",
+    kimi = "🌙",
+    copilot = "",
+    aider = "🤖",
+    sh = "",
+  },
   agents = {
-    claude = {
-      cmd = "claude",
-      args = {},
-      env = {},
-    },
+    claude = { cmd = "claude", icon = "✻" },
+    agy = { cmd = "agy", icon = "" },
+    codex = { cmd = "codex", icon = "󰡨" },
+    gemini = { cmd = "gemini", icon = "󰛄" },
+    dsh = { cmd = "dsh", icon = "🐋" },
+    deepseek = { cmd = "deepseek", icon = "🐋" },
+    pi = { cmd = "pi", icon = "π" },
+    omp = { cmd = "omp", icon = "π" },
+    kimi = { cmd = "kimi", icon = "🌙" },
+    copilot = { cmd = "copilot", icon = "" },
+    aider = { cmd = "aider", icon = "🤖" },
+    sh = { cmd = vim.o.shell, icon = "" },
   },
   ui = {
     position = "vsplit", -- "float", "split", "vsplit"

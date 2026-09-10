@@ -22,13 +22,17 @@ function M.get_status_data()
     icon = icons[cur.status] or ""
   end
 
+  local agent_icon = config.get_agent_icon(cur.agent)
+  local agent_display = agent_icon ~= "" and (agent_icon .. " " .. cur.agent) or cur.agent
+
   return {
     id = cur.id,
     name = cur.name,
     agent = cur.agent,
+    agent_icon = agent_icon,
     status = cur.status,
     icon = icon,
-    text = string.format("%s %s (%s)", icon, cur.name, cur.agent),
+    text = string.format("%s %s (%s)", icon, cur.name, agent_display),
   }
 end
 
@@ -57,7 +61,9 @@ function M.astronvim(opts)
           if opts.icon_only then
             return string.format("%s %s", data.icon, data.status)
           end
-          return string.format("%s %s [%s]", data.icon, data.name, data.agent)
+          local agent_display = (data.agent_icon and data.agent_icon ~= "") and (data.agent_icon .. " " .. data.agent)
+            or data.agent
+          return string.format("%s %s [%s]", data.icon, data.name, agent_display)
         end,
         hl = function()
           local cur = session.get_current()
@@ -162,7 +168,9 @@ function M.lualine(opts)
       if opts.icon_only then
         return string.format("%s %s", data.icon, data.status)
       end
-      return string.format("%s %s [%s]", data.icon, data.name, data.agent)
+      local agent_display = (data.agent_icon and data.agent_icon ~= "") and (data.agent_icon .. " " .. data.agent)
+        or data.agent
+      return string.format("%s %s [%s]", data.icon, data.name, agent_display)
     end,
     cond = function()
       return session.get_current() ~= nil

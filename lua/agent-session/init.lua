@@ -159,12 +159,15 @@ function M.cycle_session(direction, opts)
     local cfg = config.get()
     local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
     local icon = icons[target.status] or ""
+    local agent_icon = config.get_agent_icon(target.agent)
+    local agent_label = agent_icon ~= "" and (agent_icon .. " " .. target.agent) or target.agent
     vim.notify(
       string.format(
-        "[agent-session] Switched to '%s' [%s %s] (%d/%d)",
+        "[agent-session] Switched to '%s' [%s %s] (%s) (%d/%d)",
         target.name,
         icon,
         target.status,
+        agent_label,
         next_idx,
         count
       ),
@@ -217,8 +220,18 @@ function M.goto_session(index, opts)
     local cfg = config.get()
     local icons = cfg.status_icons or { running = "⚡", idle = "🟢", stopped = "⚪" }
     local icon = icons[target.status] or ""
+    local agent_icon = config.get_agent_icon(target.agent)
+    local agent_label = agent_icon ~= "" and (agent_icon .. " " .. target.agent) or target.agent
     vim.notify(
-      string.format("[agent-session] Switched to '%s' [%s %s] (%d/%d)", target.name, icon, target.status, index, #list),
+      string.format(
+        "[agent-session] Switched to '%s' [%s %s] (%s) (%d/%d)",
+        target.name,
+        icon,
+        target.status,
+        agent_label,
+        index,
+        #list
+      ),
       vim.log.levels.INFO
     )
   end
