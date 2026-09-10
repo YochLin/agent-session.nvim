@@ -454,17 +454,20 @@ function M._handle_status_notification(session, new_status, old_status, opts)
     end
 
     if should_notify then
-      local agent_icon = config.get_agent_icon(session.agent)
-      local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
-      local msg = session.exit_code
-          and string.format(
-            "%sAgent '%s' (%s) stopped with exit code %d",
-            icon_prefix,
-            session.name,
-            session.agent,
-            session.exit_code
-          )
-        or string.format("%sAgent '%s' (%s) process stopped", icon_prefix, session.name, session.agent)
+      local msg
+      if type(notify_cfg.exit_message) == "function" then
+        msg = notify_cfg.exit_message(session)
+      elseif type(notify_cfg.exit_message) == "string" then
+        msg = notify_cfg.exit_message:gsub("%%agent", session.agent):gsub("%%name", session.name)
+      else
+        local agent_icon = config.get_agent_icon(session.agent)
+        local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
+        local agent_str = (session.name == session.agent) and session.agent
+          or string.format("%s '%s'", session.agent, session.name)
+        msg = session.exit_code
+            and string.format("%s%s stopped with exit code %d", icon_prefix, agent_str, session.exit_code)
+          or string.format("%s%s process stopped", icon_prefix, agent_str)
+      end
       local title = "Agent Session"
 
       -- Dispatch desktop notification (terminal OSC with OS-native fallback)
@@ -514,9 +517,18 @@ function M._handle_status_notification(session, new_status, old_status, opts)
       end
       session._last_notified_at = now
 
-      local agent_icon = config.get_agent_icon(session.agent)
-      local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or "🤖 "
-      local msg = string.format("%sAgent '%s' (%s) has finished task!", icon_prefix, session.name, session.agent)
+      local msg
+      if type(notify_cfg.idle_message) == "function" then
+        msg = notify_cfg.idle_message(session)
+      elseif type(notify_cfg.idle_message) == "string" then
+        msg = notify_cfg.idle_message:gsub("%%agent", session.agent):gsub("%%name", session.name)
+      else
+        local agent_icon = config.get_agent_icon(session.agent)
+        local icon_prefix = agent_icon ~= "" and (agent_icon .. " ") or ""
+        local agent_str = (session.name == session.agent) and session.agent
+          or string.format("%s '%s'", session.agent, session.name)
+        msg = string.format("%s%s has finished!", icon_prefix, agent_str)
+      end
       local title = "Agent Session"
 
       -- Dispatch desktop notification (terminal OSC with OS-native fallback)

@@ -31,6 +31,8 @@
 ---@field cooldown? number Minimum milliseconds between consecutive notifications for the same session (default: 1000)
 ---@field terminal? boolean|"auto"|"osc777"|"osc9" Send desktop notifications to host terminal (e.g. Warp, WezTerm, Ghostty, iTerm2) via OSC sequence (default: "auto")
 ---@field system? boolean|"auto" Send OS-native desktop notification (macOS osascript, Linux notify-send) (default: "auto", used as fallback when terminal OSC unsupported)
+---@field idle_message? string|fun(session: Session):string Custom message template or function for idle notifications
+---@field exit_message? string|fun(session: Session):string Custom message template or function for process exit notifications
 
 ---@class AgentDefinition
 ---@field cmd string|string[] Base command or function to launch agent
