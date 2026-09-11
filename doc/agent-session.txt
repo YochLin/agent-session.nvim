@@ -20,7 +20,7 @@ agent-session.nvim is a Neovim plugin for managing multiple AI agent sessions
 
 Using lazy.nvim: >lua
     {
-      "yoch/agent-session.nvim",
+      "YochLin/agent-session.nvim",
       opts = {
         default_agent = "claude",
       },
@@ -62,8 +62,8 @@ Default options: >lua
         },
       },
       ui = {
-        position = "float", -- "float", "split", "vsplit"
-        width = 0.85,
+        position = "vsplit", -- "float", "split", "vsplit"
+        width = 0.35,
         height = 0.8,
         border = "rounded",
         title = " Agent Session ",
