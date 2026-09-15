@@ -58,6 +58,27 @@ function M.render()
   local lines = {}
   local highlights = {} -- { { line, col_start, col_end, group } }
 
+  -- Append the "[icon agent]" tail to a line and highlight it: the status color covers
+  -- the line except for the agent icon, which gets its brand color instead.
+  local function push_session_line(s, head, status_group)
+    local agent_icon = config.get_agent_icon(s.agent)
+    local agent_label = agent_icon ~= "" and (agent_icon .. " " .. s.agent) or s.agent
+    table.insert(lines, head .. agent_label .. "]")
+
+    local line_idx = #lines
+    M._line_map[line_idx] = s.id
+
+    local agent_hl = agent_icon ~= "" and config.get_agent_hl(s.agent) or nil
+    if agent_hl then
+      local icon_s, icon_e = #head, #head + #agent_icon
+      table.insert(highlights, { line_idx, 0, icon_s, status_group })
+      table.insert(highlights, { line_idx, icon_s, icon_e, agent_hl })
+      table.insert(highlights, { line_idx, icon_e, -1, status_group })
+    else
+      table.insert(highlights, { line_idx, 0, -1, status_group })
+    end
+  end
+
   -- Header
   table.insert(lines, " 🤖 Agent Sessions (" .. total_count .. ")")
   table.insert(highlights, { 1, 0, -1, "AgentSessionHeader" })
@@ -103,16 +124,8 @@ function M.render()
       local is_current = cur_sess and cur_sess.id == s.id
       local prefix = is_current and " ➜ " or "   "
       local icon = get_icon(s.status)
-      local agent_icon = config.get_agent_icon(s.agent)
-      local agent_label = agent_icon ~= "" and (agent_icon .. " " .. s.agent) or s.agent
-      local line_text = string.format("%s%s %-12s [%s]", prefix, icon, s.name, agent_label)
-
-      table.insert(lines, line_text)
-      local line_idx = #lines
-      M._line_map[line_idx] = s.id
-
       local hl_group = s.status == "running" and "AgentSessionRunning" or "AgentSessionIdle"
-      table.insert(highlights, { line_idx, 0, -1, hl_group })
+      push_session_line(s, string.format("%s%s %-12s [", prefix, icon, s.name), hl_group)
     end
   else
     table.insert(lines, "   (No active sessions)")
@@ -127,13 +140,7 @@ function M.render()
 
     for _, s in ipairs(stopped_sessions) do
       local icon = get_icon(s.status)
-      local agent_icon = config.get_agent_icon(s.agent)
-      local agent_label = agent_icon ~= "" and (agent_icon .. " " .. s.agent) or s.agent
-      local line_text = string.format("   %s %-12s [%s]", icon, s.name, agent_label)
-      table.insert(lines, line_text)
-      local line_idx = #lines
-      M._line_map[line_idx] = s.id
-      table.insert(highlights, { line_idx, 0, -1, "AgentSessionStopped" })
+      push_session_line(s, string.format("   %s %-12s [", icon, s.name), "AgentSessionStopped")
     end
   end
 

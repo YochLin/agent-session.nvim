@@ -93,6 +93,28 @@ opts = {
 
 Then `:AgentSessionNew opus`. A CLI that isn't in `agents` still works if it's on your `$PATH`, e.g. `:AgentSessionNew opencode`.
 
+### Icons and brand colors
+
+Each agent gets a Nerd Font glyph plus a brand color, so the sidebar reads at a glance. Override either:
+
+```lua
+opts = {
+  agent_icons = { opus = "✻" },
+  agent_colors = { opus = "#d97757" },
+  -- or per agent: agents = { opus = { cmd = "claude", icon = "✻", color = "#d97757" } }
+}
+```
+
+Colors land on the highlight group `AgentSessionAgent<name>` (e.g. `AgentSessionAgentclaude`), defined with `default = true` — define it in your colorscheme and yours wins.
+
+Terminals can't render real image logos in a text buffer, so icons are glyphs. For an exact logo, build the SVG into a small icon font, map it in your terminal, and point `agent_icons` at its codepoint:
+
+```lua
+opts = { agent_icons = { claude = "\u{100000}" } }
+```
+
+Use plane 16 (`U+100000`–`U+10FFFD`) — Nerd Fonts already occupies the lower private-use ranges up to `U+F1AF0`. The glyph is monochrome and takes its color from `agent_colors`, and only machines with that font installed will render it.
+
 ### Statusline
 
 ```lua
@@ -175,6 +197,20 @@ require("agent-session").setup({
     omp = { cmd = "omp", args = {}, env = {}, icon = "π" },
     agy = { cmd = "agy", args = {}, env = {}, icon = "" },
     sh = { cmd = vim.o.shell, args = {}, env = {}, icon = "" },
+  },
+  -- Brand color per agent icon. Keys match `agents` / `agent_icons`.
+  agent_colors = {
+    claude = "#d97757",
+    codex = "#10a37f",
+    gemini = "#4285f4",
+    copilot = "#8957e5",
+    aider = "#14b8a6",
+    kimi = "#7c5cff",
+    deepseek = "#4d6bfe",
+    pi = "#f2a73b",
+    agy = "#a78bfa",
+    qwen = "#615ced",
+    sh = "#6272a4",
   },
   -- Global keymaps that work in both normal and terminal mode. None are set by default.
   -- e.g. { toggle = "<M-a>", zoom = "<M-z>", sidebar = "<M-e>", next = "<M-]>", prev = "<M-[>" }

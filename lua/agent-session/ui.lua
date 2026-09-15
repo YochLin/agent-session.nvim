@@ -206,6 +206,41 @@ local function setup_tab_highlights()
   vim.api.nvim_set_hl(0, "AgentSessionTabStopped", { fg = "#6272a4", default = true })
 end
 
+---Composite highlight putting an agent's brand color on a tab's background, so coloring
+---the icon doesn't punch a hole in the tab. Returns nil when the agent has no color.
+---@param agent string
+---@param tab_group string
+---@return string|nil
+local function agent_tab_hl(agent, tab_group)
+  local base = config.get_agent_hl(agent)
+  if not base then
+    return nil
+  end
+  local fg = vim.api.nvim_get_hl(0, { name = base, link = false }).fg
+  if not fg then
+    return nil
+  end
+  local tab = vim.api.nvim_get_hl(0, { name = tab_group, link = false })
+  local group = base .. tab_group:gsub("^AgentSession", "")
+  vim.api.nvim_set_hl(0, group, { fg = fg, bg = tab.bg, bold = tab.bold, reverse = tab.reverse })
+  return group
+end
+
+---Split a tab label around the agent icon, so the icon can be highlighted on its own
+---@param s Session
+---@param index number
+---@param is_active boolean
+---@return string head, string agent_icon, string tail
+local function tab_segments(s, index, is_active)
+  local status_icon = M.get_status_icon(s.status)
+  local agent_icon = config.get_agent_icon(s.agent)
+  local open = is_active and " [ " or " "
+  local close = is_active and " ] " or " "
+  local head = open .. status_icon .. " "
+  local tail = (agent_icon ~= "" and " " or "") .. string.format("%d:%s", index, s.name) .. close
+  return head, agent_icon, tail
+end
+
 ---Format title chunks for floating window
 ---@param current_session? Session
 ---@return table chunks
@@ -245,17 +280,15 @@ function M.format_float_title_chunks(current_session)
       table.insert(chunks, { "│", "AgentSessionTabDivider" })
     end
 
-    local icon = M.get_status_icon(s.status)
-    local agent_icon = config.get_agent_icon(s.agent)
-    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
-    local is_active = current_session and (s.id == current_session.id)
-    if is_active then
-      local tab_text = string.format(" [ %s %d:%s ] ", icon_segment, i, s.name)
-      table.insert(chunks, { tab_text, "AgentSessionTabSel" })
-    else
-      local tab_text = string.format(" %s %d:%s ", icon_segment, i, s.name)
-      table.insert(chunks, { tab_text, "AgentSessionTab" })
+    local is_active = current_session and (s.id == current_session.id) or false
+    local tab_group = is_active and "AgentSessionTabSel" or "AgentSessionTab"
+    local head, agent_icon, tail = tab_segments(s, i, is_active)
+
+    table.insert(chunks, { head, tab_group })
+    if agent_icon ~= "" then
+      table.insert(chunks, { agent_icon, agent_tab_hl(s.agent, tab_group) or tab_group })
     end
+    table.insert(chunks, { tail, tab_group })
   end
 
   table.insert(chunks, { " ", "Normal" })
@@ -299,15 +332,15 @@ function M.format_winbar(current_session)
       table.insert(parts, "%#AgentSessionTabDivider#│")
     end
 
-    local icon = M.get_status_icon(s.status)
-    local agent_icon = config.get_agent_icon(s.agent)
-    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
-    local is_active = current_session and (s.id == current_session.id)
-    if is_active then
-      table.insert(parts, string.format("%%#AgentSessionTabSel# [ %s %d:%s ] ", icon_segment, i, s.name))
-    else
-      table.insert(parts, string.format("%%#AgentSessionTab# %s %d:%s ", icon_segment, i, s.name))
+    local is_active = current_session and (s.id == current_session.id) or false
+    local tab_group = is_active and "AgentSessionTabSel" or "AgentSessionTab"
+    local head, agent_icon, tail = tab_segments(s, i, is_active)
+
+    table.insert(parts, "%#" .. tab_group .. "#" .. head)
+    if agent_icon ~= "" then
+      table.insert(parts, "%#" .. (agent_tab_hl(s.agent, tab_group) or tab_group) .. "#" .. agent_icon)
     end
+    table.insert(parts, "%#" .. tab_group .. "#" .. tail)
   end
 
   return "%=" .. table.concat(parts, "") .. "%#Normal#%="
