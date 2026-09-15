@@ -89,6 +89,25 @@ for _, cur in ipairs({ s, other }) do
   assert(stripped == body, ("winbar %q != legacy %q"):format(stripped, body))
 end
 
+-- same check for the single-session label used when tabbar = false
+config.setup({ spinner = { enabled = false }, ui = { tabbar = false, title = "Agent Session" } })
+for _, cur in ipairs({ s, other }) do
+  local st, ag = ui.get_status_icon(cur.status), config.get_agent_icon(cur.agent)
+  local seg = ag ~= "" and (st .. " " .. ag) or st
+  local legacy = string.format(" %s[%s] %s %s ", "Agent Session", cur.name, seg, cur.status)
+
+  local text = ""
+  for _, c in ipairs(ui.format_float_title_chunks(cur)) do
+    assert(c[1] ~= "", "empty chunk")
+    text = text .. c[1]
+  end
+  assert(text == legacy, ("single chunks %q != legacy %q"):format(text, legacy))
+
+  local stripped = ui.format_winbar(cur):gsub("%%#%w+#", ""):gsub("%%%*", ""):gsub("%%=", "")
+  assert(stripped == legacy, ("single winbar %q != legacy %q"):format(stripped, legacy))
+end
+config.setup({})
+
 for _, group in ipairs({ "AgentSessionAgentclaudeTab", "AgentSessionAgentclaudeTabSel" }) do
   local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
   assert(hl.fg == tonumber("d97757", 16), group .. " lost the brand color")

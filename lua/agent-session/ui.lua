@@ -241,6 +241,18 @@ local function tab_segments(s, index, is_active)
   return head, agent_icon, tail
 end
 
+---Split the single-session label (tabbar = false) around the agent icon
+---@param s Session
+---@param title string
+---@return string head, string agent_icon, string tail
+local function single_segments(s, title)
+  local status_icon = M.get_status_icon(s.status)
+  local agent_icon = config.get_agent_icon(s.agent)
+  local head = string.format(" %s[%s] %s ", title, s.name, status_icon)
+  local tail = (agent_icon ~= "" and " " or "") .. s.status .. " "
+  return head, agent_icon, tail
+end
+
 ---Format title chunks for floating window
 ---@param current_session? Session
 ---@return table chunks
@@ -253,17 +265,15 @@ function M.format_float_title_chunks(current_session)
     if not current_session then
       return { { ui_opts.title or " Agent Session ", "AgentSessionTabSel" } }
     end
-    local icon = M.get_status_icon(current_session.status)
-    local agent_icon = config.get_agent_icon(current_session.agent)
-    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
-    local text = string.format(
-      " %s[%s] %s %s ",
-      ui_opts.title or "Agent Session",
-      current_session.name,
-      icon_segment,
-      current_session.status
-    )
-    return { { text, "AgentSessionTabSel" } }
+    local head, agent_icon, tail = single_segments(current_session, ui_opts.title or "Agent Session")
+    if agent_icon == "" then
+      return { { head .. tail, "AgentSessionTabSel" } }
+    end
+    return {
+      { head, "AgentSessionTabSel" },
+      { agent_icon, agent_tab_hl(current_session.agent, "AgentSessionTabSel") or "AgentSessionTabSel" },
+      { tail, "AgentSessionTabSel" },
+    }
   end
 
   local ordered = session_mod.get_ordered()
@@ -307,17 +317,15 @@ function M.format_winbar(current_session)
     if not current_session then
       return "%=" .. (ui_opts.title or " Agent Session ") .. "%="
     end
-    local icon = M.get_status_icon(current_session.status)
-    local agent_icon = config.get_agent_icon(current_session.agent)
-    local icon_segment = agent_icon ~= "" and (icon .. " " .. agent_icon) or icon
-    local text = string.format(
-      " %s[%s] %s %s ",
-      ui_opts.title or "Agent Session",
-      current_session.name,
-      icon_segment,
-      current_session.status
-    )
-    return "%=" .. text .. "%="
+    local head, agent_icon, tail = single_segments(current_session, ui_opts.title or "Agent Session")
+    if agent_icon == "" then
+      return "%=" .. head .. tail .. "%="
+    end
+    -- This branch sets no group of its own, so the icon borrows WinBar's background
+    -- and %* restores the winbar's own highlight afterwards.
+    local hl = agent_tab_hl(current_session.agent, "WinBar")
+    local icon_part = hl and ("%#" .. hl .. "#" .. agent_icon .. "%*") or agent_icon
+    return "%=" .. head .. icon_part .. tail .. "%="
   end
 
   local ordered = session_mod.get_ordered()
