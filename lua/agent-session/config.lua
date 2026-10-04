@@ -11,6 +11,7 @@
 ---@field notify_on_idle? boolean Notify when a background session transitions to idle (default: true)
 ---@field notify_on_exit? boolean Notify when a background session exits (default: true)
 ---@field notifications? AgentSessionNotificationConfig Notification settings
+---@field persist? AgentSessionPersistConfig Save open sessions per project and restore them after a restart
 
 ---@class AgentSessionKeymapsConfig
 ---@field toggle? string|false Global shortcut to toggle session window (modes: n, t)
@@ -41,7 +42,19 @@
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
 ---@field color? string Brand color for this agent's icon (hex, e.g. "#d97757")
+---@field resume? AgentResumeConfig|false How to resume this agent's conversation after a Neovim restart (false disables)
 ---@field icon? string Icon or logo symbol for this agent CLI (e.g. "✻", "", "󰡨")
+
+---@class AgentResumeConfig
+---@field assign? fun(id: string): string[] Args that pin a pre-generated UUID as the conversation ID at launch
+---@field args? fun(id: string): string[] Args that resume the conversation with the given ID
+---@field exists? fun(id: string, session: Session): boolean Whether a pre-assigned ID has a real conversation yet (only resumable IDs are saved)
+---@field discover? "codex"|"agy"|fun(session: Session, claimed: table<string, boolean>): string|nil Strategy to find the conversation ID after the first submit (for CLIs that cannot pin an ID)
+
+---@class AgentSessionPersistConfig
+---@field enabled? boolean Save open sessions per project and allow restoring them (default: true)
+---@field auto_restore? "ask"|boolean On startup with saved sessions: "ask" (prompt), true (restore silently), false (do nothing; use :AgentSessionRestore)
+---@field max_age_days? number Delete saved files of other projects untouched for this many days (default: 30, 0 disables)
 
 ---@class AgentSessionTerminalMappingsConfig
 ---@field enabled? boolean Enable buffer-local terminal mode escape keymap (default: true)
@@ -128,18 +141,42 @@ M.defaults = {
       cmd = "claude",
       args = {},
       env = {},
+      resume = {
+        assign = function(id)
+          return { "--session-id", id }
+        end,
+        args = function(id)
+          return { "--resume", id }
+        end,
+        exists = function(id)
+          local dir = vim.env.CLAUDE_CONFIG_DIR or (vim.env.HOME .. "/.claude")
+          return vim.fn.glob(dir .. "/projects/*/" .. id .. ".jsonl") ~= ""
+        end,
+      },
       icon = "✻",
     },
     agy = {
       cmd = "agy",
       args = {},
       env = {},
+      resume = {
+        discover = "agy",
+        args = function(id)
+          return { "--conversation", id }
+        end,
+      },
       icon = "",
     },
     codex = {
       cmd = "codex",
       args = {},
       env = {},
+      resume = {
+        discover = "codex",
+        args = function(id)
+          return { "resume", id }
+        end,
+      },
       icon = "󰡨",
     },
     gemini = {
@@ -244,6 +281,11 @@ M.defaults = {
     on_session_start = nil,
     on_session_exit = nil,
     on_status_change = nil, -- function(session, new_status, old_status)
+  },
+  persist = {
+    enabled = true, -- Save open sessions per project (cwd at startup) under session_dir/projects
+    auto_restore = "ask", -- "ask" (prompt on startup), true (restore silently), false (manual :AgentSessionRestore)
+    max_age_days = 30, -- Prune saved files of other projects untouched for this long (0 disables)
   },
 }
 
