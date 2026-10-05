@@ -3,6 +3,7 @@
 ---@field default_agent? string Default agent type (e.g. "claude", "custom")
 ---@field agents? table<string, AgentDefinition> Pre-configured agent commands & options
 ---@field agent_icons? table<string, string> Icon mappings per agent CLI type (e.g. { claude = "✻", agy = "" })
+---@field agent_colors? table<string, string> Brand color per agent CLI, used to highlight its icon (e.g. { claude = "#d97757" })
 ---@field keymaps? AgentSessionKeymapsConfig Global keymaps working seamlessly across normal & terminal mode
 ---@field ui? AgentSessionUIConfig UI appearance and behavior
 ---@field spinner? AgentSessionSpinnerConfig Animated spinner settings
@@ -39,6 +40,7 @@
 ---@field cmd string|string[] Base command or function to launch agent
 ---@field env? table<string, string> Environment variables
 ---@field args? string[] Additional CLI arguments
+---@field color? string Brand color for this agent's icon (hex, e.g. "#d97757")
 ---@field icon? string Icon or logo symbol for this agent CLI (e.g. "✻", "", "󰡨")
 
 ---@class AgentSessionTerminalMappingsConfig
@@ -96,6 +98,30 @@ M.defaults = {
     sh = "",
     bash = "",
     zsh = "",
+  },
+  -- Brand colors used to highlight each agent's icon. Official where the vendor
+  -- publishes one, eyeballed from the logo otherwise; override any of them in setup().
+  agent_colors = {
+    claude = "#d97757",
+    agy = "#a78bfa",
+    antigravity = "#a78bfa",
+    gemini = "#4285f4",
+    codex = "#10a37f",
+    chatgpt = "#10a37f",
+    openai = "#10a37f",
+    dsh = "#4d6bfe",
+    deepseek = "#4d6bfe",
+    pi = "#f2a73b",
+    omp = "#f2a73b",
+    ["oh-my-pi"] = "#f2a73b",
+    kimi = "#7c5cff",
+    moonshot = "#7c5cff",
+    copilot = "#8957e5",
+    aider = "#14b8a6",
+    qwen = "#615ced",
+    sh = "#6272a4",
+    bash = "#6272a4",
+    zsh = "#6272a4",
   },
   agents = {
     claude = {
@@ -224,9 +250,14 @@ M.defaults = {
 ---@type AgentSessionConfig
 M.options = {}
 
+---@type AgentSessionConfig Raw user opts, kept unmerged so per-agent lookups can tell
+---an explicit user value from a default that `tbl_deep_extend` merged in underneath it.
+M._user = {}
+
 ---Setup configuration with user options
 ---@param opts? AgentSessionConfig
 function M.setup(opts)
+  M._user = opts or {}
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
 
   -- Ensure session directory exists
@@ -246,6 +277,50 @@ function M.get()
   return M.options
 end
 
+---Look up a per-agent attribute in one config table, checking the agent definition
+---before the flat map. Both are consulted on the raw user table before the defaults,
+---so `agent_icons = { claude = ... }` is not shadowed by the default `agents.claude.icon`.
+---@param source? AgentSessionConfig
+---@param agent_name string
+---@param field string Key on the agent definition ("icon", "color")
+---@param map string Name of the flat table ("agent_icons", "agent_colors")
+---@return string|nil
+local function lookup_agent_attr(source, agent_name, field, map)
+  if type(source) ~= "table" then
+    return nil
+  end
+  local agent = source.agents and source.agents[agent_name]
+  if agent and type(agent[field]) == "string" then
+    return agent[field]
+  end
+  if source[map] and type(source[map][agent_name]) == "string" then
+    return source[map][agent_name]
+  end
+  return nil
+end
+
+---Resolve the highlight group coloring an agent's icon, defining it on demand.
+---Uses `default = true`, so a colorscheme or user definition of the same group wins.
+---@param agent_name? string
+---@return string|nil group nil when the agent has no brand color
+function M.get_agent_hl(agent_name)
+  if not agent_name or agent_name == "" then
+    return nil
+  end
+
+  local color = lookup_agent_attr(M._user, agent_name, "color", "agent_colors")
+    or lookup_agent_attr(M.defaults, agent_name, "color", "agent_colors")
+
+  if type(color) ~= "string" or color == "" then
+    return nil
+  end
+
+  -- Group names only accept word characters, so "oh-my-pi" becomes "oh_my_pi"
+  local group = "AgentSessionAgent" .. agent_name:gsub("%W", "_")
+  pcall(vim.api.nvim_set_hl, 0, group, { fg = color, default = true })
+  return group
+end
+
 ---Get the display icon for an agent CLI
 ---@param agent_name? string
 ---@return string icon Empty string if no icon found or configured
@@ -254,25 +329,15 @@ function M.get_agent_icon(agent_name)
     return ""
   end
 
-  local opts = M.get()
-  -- 1. Check agent definition in opts.agents
-  if opts.agents and opts.agents[agent_name] and opts.agents[agent_name].icon ~= nil then
-    local icon = opts.agents[agent_name].icon
-    return (type(icon) == "string") and icon or ""
+  -- 1. User's own agents[name].icon, then their agent_icons
+  -- 2. Same two places in the defaults
+  local icon = lookup_agent_attr(M._user, agent_name, "icon", "agent_icons")
+    or lookup_agent_attr(M.defaults, agent_name, "icon", "agent_icons")
+  if icon then
+    return icon
   end
 
-  -- 2. Check top-level opts.agent_icons
-  if opts.agent_icons and opts.agent_icons[agent_name] ~= nil then
-    local icon = opts.agent_icons[agent_name]
-    return (type(icon) == "string") and icon or ""
-  end
-
-  -- 3. Check defaults table
-  if M.defaults.agent_icons and M.defaults.agent_icons[agent_name] then
-    return M.defaults.agent_icons[agent_name]
-  end
-
-  -- 4. Specific alias / keyword checks
+  -- 3. Specific alias / keyword checks
   local lower = agent_name:lower()
   if lower:find("claude", 1, true) then
     return M.defaults.agent_icons.claude or "✻"

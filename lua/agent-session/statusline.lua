@@ -30,6 +30,7 @@ function M.get_status_data()
     name = cur.name,
     agent = cur.agent,
     agent_icon = agent_icon,
+    agent_hl = config.get_agent_hl(cur.agent),
     status = cur.status,
     icon = icon,
     text = string.format("%s %s (%s)", icon, cur.name, agent_display),
