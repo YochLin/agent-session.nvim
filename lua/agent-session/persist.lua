@@ -489,51 +489,176 @@ function M._discover_codex(sess, claimed)
 end
 
 ---Find the agy conversation created by this session's process.
----agy appends `{ timestamp(ms), workspace, conversationId }` to history.jsonl on every
----submit; the conversation's .db file is created when the process starts.
+---agy writes its conversations to ~/.gemini/antigravity-cli across multiple sources:
+---1. conversation_summaries.db (SQLite database with conversation_id, workspace_uris, last_modified_time)
+---2. log/cli-*.log and cli.log (session logs containing workspace and "Created conversation <id>")
+---3. history.jsonl (command history with optional conversationId)
+---4. conversations/<id>.db (per-conversation SQLite files containing workspace paths)
 ---@param sess Session
 ---@param claimed table<string, boolean>
 ---@return string|nil
 function M._discover_agy(sess, claimed)
   local home = (vim.env.HOME or "~") .. "/.gemini/antigravity-cli"
-  local text = read_tail(home .. "/history.jsonl", 256 * 1024)
-  if not text then
-    return nil
-  end
   local started = sess._started_ms or ((sess.created_at or os.time()) * 1000)
   local submit = sess._submit_ms or started
   local cwd = M.realpath(sess.cwd)
   local real_cache = {}
-  local best, best_score
 
-  for line in text:gmatch("[^\n]+") do
-    local ok, e = pcall(vim.json.decode, line)
-    if
-      ok
-      and type(e) == "table"
-      and type(e.conversationId) == "string"
-      and type(e.timestamp) == "number"
-      and type(e.workspace) == "string"
-      and not claimed[e.conversationId]
-      and e.timestamp >= started - 2000
-    then
-      if real_cache[e.workspace] == nil then
-        real_cache[e.workspace] = M.realpath(e.workspace) or false
-      end
-      if real_cache[e.workspace] == cwd then
-        -- Skip conversations that existed before this process started (e.g. an agy
-        -- running outside Neovim in the same directory)
-        local st = uv.fs_stat(home .. "/conversations/" .. e.conversationId .. ".db")
-        local born = st and st.birthtime and st.birthtime.sec or 0
-        if born == 0 or born * 1000 >= started - 2000 then
-          local score = math.abs(e.timestamp - submit)
-          if not best_score or score < best_score then
-            best, best_score = e.conversationId, score
+  local function matches_workspace(ws)
+    if type(ws) ~= "string" or ws == "" then
+      return false
+    end
+    ws = ws:gsub("^file://", "")
+    if real_cache[ws] == nil then
+      real_cache[ws] = M.realpath(ws) or false
+    end
+    return real_cache[ws] == cwd
+  end
+
+  local function valid_conv(id)
+    if not id or type(id) ~= "string" or id == "" or claimed[id] then
+      return false
+    end
+    local st = uv.fs_stat(home .. "/conversations/" .. id .. ".db")
+    if not st then
+      return false
+    end
+    local born = st.birthtime and st.birthtime.sec or 0
+    if born > 0 and born * 1000 < started - 2000 then
+      return false
+    end
+    return true
+  end
+
+  local best, best_score
+  local function consider(id, ts)
+    if not valid_conv(id) then
+      return
+    end
+    local score = math.abs((ts or started) - submit)
+    if not best_score or score < best_score then
+      best, best_score = id, score
+    end
+  end
+
+  -- 1. Try conversation_summaries.db via sqlite3
+  local db_path = home .. "/conversation_summaries.db"
+  if vim.fn.executable("sqlite3") == 1 and uv.fs_stat(db_path) then
+    local sql = "SELECT conversation_id, workspace_uris, strftime('%s', last_modified_time) "
+      .. "FROM conversation_summaries "
+      .. "ORDER BY last_modified_time DESC LIMIT 20;"
+    local ok, lines = pcall(vim.fn.systemlist, { "sqlite3", db_path, sql })
+    if ok and type(lines) == "table" then
+      for _, line in ipairs(lines) do
+        local id, uris_raw, ts_sec = line:match("^(.-)%|(.-)%|(.*)$")
+        if id and uris_raw then
+          local ws_matches = false
+          local ok_j, uris = pcall(vim.json.decode, uris_raw)
+          if ok_j and type(uris) == "table" then
+            for _, u in ipairs(uris) do
+              if matches_workspace(u) then
+                ws_matches = true
+                break
+              end
+            end
+          elseif cwd and uris_raw:find(cwd, 1, true) then
+            ws_matches = true
+          end
+
+          if ws_matches then
+            local ts_ms = tonumber(ts_sec) and (tonumber(ts_sec) * 1000) or started
+            if ts_ms >= started - 10000 then
+              consider(id, ts_ms)
+            end
           end
         end
       end
     end
   end
+
+  -- 2. Try log files in ~/.gemini/antigravity-cli/log/ and cli.log
+  if not best then
+    local log_dir = home .. "/log"
+    local candidates = {}
+    if uv.fs_stat(home .. "/cli.log") then
+      table.insert(candidates, home .. "/cli.log")
+    end
+    if uv.fs_stat(log_dir) then
+      for name, typ in vim.fs.dir(log_dir) do
+        if typ == "file" and name:match("^cli%-%d+_%d+%.log$") then
+          local p = log_dir .. "/" .. name
+          local st = uv.fs_stat(p)
+          if st and st.mtime and st.mtime.sec * 1000 >= started - 10000 then
+            table.insert(candidates, p)
+          end
+        end
+      end
+    end
+
+    for _, p in ipairs(candidates) do
+      local f = io.open(p, "r")
+      if f then
+        local chunk = f:read(65536) or ""
+        f:close()
+        if cwd and chunk:find(cwd, 1, true) then
+          local id = chunk:match("Created conversation ([0-9a-fA-F%-]+)")
+            or chunk:match("convID=([0-9a-fA-F%-]+)")
+            or chunk:match("GetConversationDetail: found conversation ([0-9a-fA-F%-]+)")
+          if id then
+            local st = uv.fs_stat(p)
+            local log_ts = st and st.mtime and (st.mtime.sec * 1000) or started
+            consider(id, log_ts)
+          end
+        end
+      end
+    end
+  end
+
+  -- 3. Try history.jsonl
+  if not best then
+    local text = read_tail(home .. "/history.jsonl", 256 * 1024)
+    if text then
+      for line in text:gmatch("[^\n]+") do
+        local ok, e = pcall(vim.json.decode, line)
+        if
+          ok
+          and type(e) == "table"
+          and type(e.conversationId) == "string"
+          and type(e.timestamp) == "number"
+          and type(e.workspace) == "string"
+          and matches_workspace(e.workspace)
+          and e.timestamp >= started - 2000
+        then
+          consider(e.conversationId, e.timestamp)
+        end
+      end
+    end
+  end
+
+  -- 4. Try scanning conversations/*.db files
+  if not best then
+    local conv_dir = home .. "/conversations"
+    if uv.fs_stat(conv_dir) then
+      for name, typ in vim.fs.dir(conv_dir) do
+        if typ == "file" and name:match("^([0-9a-fA-F%-]+)%.db$") then
+          local id = name:match("^([0-9a-fA-F%-]+)%.db$")
+          local p = conv_dir .. "/" .. name
+          local st = uv.fs_stat(p)
+          if st and st.mtime and st.mtime.sec * 1000 >= started - 5000 then
+            local f = io.open(p, "r")
+            if f then
+              local chunk = f:read(32768) or ""
+              f:close()
+              if cwd and chunk:find(cwd, 1, true) then
+                consider(id, st.mtime.sec * 1000)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
   return best
 end
 

@@ -164,6 +164,11 @@ M.defaults = {
         args = function(id)
           return { "--conversation", id }
         end,
+        exists = function(id)
+          local home = (vim.env.HOME or "~") .. "/.gemini/antigravity-cli"
+          local uv = vim.uv or vim.loop
+          return uv.fs_stat(home .. "/conversations/" .. id .. ".db") ~= nil
+        end,
       },
       icon = "",
     },
