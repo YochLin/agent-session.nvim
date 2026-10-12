@@ -1,4 +1,5 @@
 local config = require("agent-session.config")
+local persist = require("agent-session.persist")
 local uv = vim.uv or vim.loop
 
 local M = {}
@@ -21,6 +22,13 @@ local M = {}
 ---@field _ready boolean|nil Whether startup has settled and session is ready for tasks
 ---@field _busy boolean|nil Whether an active task is running (set on input/output after ready)
 ---@field _user_submitted boolean|nil Whether user explicitly submitted input (via Enter or send_text)
+---@field cwd string Working directory the agent process was started in
+---@field agent_session_id string|nil The agent CLI's own conversation ID (used to resume after restart)
+---@field _has_conversation boolean|nil Whether agent_session_id points at a real, resumable conversation
+---@field _resumed boolean|nil Whether this session was launched by resuming a saved conversation
+---@field _started_ms number|nil Wall clock (ms) when the process was spawned
+---@field _submit_ms number|nil Wall clock (ms) of the latest submit, used for ID discovery
+---@field _discover_gen number|nil Generation counter cancelling stale ID discovery retries
 
 ---@type table<string, Session>
 M._active_sessions = {}
@@ -638,14 +646,21 @@ function M.set_status(session_or_id, new_status)
     if ok_sb and sidebar_mod.render then
       sidebar_mod.render()
     end
+
+    -- Exited sessions are no longer restorable; drop them from the saved snapshot
+    if new_status == "stopped" then
+      persist.save()
+    end
   end)
 end
 
 ---Create and launch a new agent session
 ---@param name? string
 ---@param agent_name? string
+---@param create_opts? { cwd?: string, resume_id?: string, created_at?: number } Restore options: start in `cwd`, resume conversation `resume_id`, keep original ordering via `created_at`
 ---@return Session
-function M.create(name, agent_name)
+function M.create(name, agent_name, create_opts)
+  create_opts = create_opts or {}
   local opts = config.get()
   local id = generate_id()
   name = name or ("session-" .. os.date("%m%d-%H%M"))
@@ -667,10 +682,28 @@ function M.create(name, agent_name)
     cmd = { cmd }
   end
 
+  -- Resume / pin the agent's conversation ID. These go right after the base command,
+  -- since some CLIs take them as a subcommand (e.g. `codex resume <id>`).
+  local resume = type(agent_def.resume) == "table" and agent_def.resume or nil
+  local agent_session_id, resumed = nil, false
+  if resume and create_opts.resume_id and type(resume.args) == "function" then
+    agent_session_id = create_opts.resume_id
+    resumed = true
+    vim.list_extend(cmd, resume.args(agent_session_id) or {})
+  elseif resume and type(resume.assign) == "function" then
+    agent_session_id = persist.gen_uuid()
+    vim.list_extend(cmd, resume.assign(agent_session_id) or {})
+  end
+
   if agent_def.args then
     for _, arg in ipairs(agent_def.args) do
       table.insert(cmd, arg)
     end
+  end
+
+  local cwd = create_opts.cwd
+  if not cwd or vim.fn.isdirectory(cwd) == 0 then
+    cwd = vim.fn.getcwd()
   end
 
   -- Create an unlisted buffer for the terminal
@@ -686,7 +719,7 @@ function M.create(name, agent_name)
     agent = agent_name,
     bufnr = bufnr,
     job_id = 0,
-    created_at = os.time(),
+    created_at = create_opts.created_at or os.time(),
     status = "running",
     exit_code = nil,
     _timer = timer,
@@ -698,6 +731,11 @@ function M.create(name, agent_name)
     _ready = false,
     _busy = false,
     _user_submitted = false,
+    cwd = cwd,
+    agent_session_id = agent_session_id,
+    _has_conversation = resumed,
+    _resumed = resumed,
+    _started_ms = persist.now_ms(),
   }
 
   M._active_sessions[id] = session
@@ -711,6 +749,7 @@ function M.create(name, agent_name)
     if session.status ~= "running" then
       M.set_status(session, "running")
     end
+    persist.on_submit(session)
     return "<CR>"
   end
 
@@ -744,7 +783,7 @@ function M.create(name, agent_name)
 
   -- Build termopen options
   local term_opts = {
-    cwd = vim.fn.getcwd(),
+    cwd = cwd,
     on_exit = function(_, exit_code, _)
       if timer and not timer:is_closing() then
         timer:stop()
@@ -756,6 +795,20 @@ function M.create(name, agent_name)
       end
       session.exit_code = exit_code
       M.set_status(session, "stopped")
+      -- A resumed agent that dies right away most likely could not find its conversation
+      if session._resumed and not persist._exiting and persist.now_ms() - (session._started_ms or 0) < 8000 then
+        vim.schedule(function()
+          vim.notify(
+            string.format(
+              "[agent-session] '%s' exited right after resuming (the %s conversation may no longer exist). Start a fresh one with :AgentSessionNew %s",
+              session.name,
+              session.agent,
+              session.agent
+            ),
+            vim.log.levels.WARN
+          )
+        end)
+      end
       if opts.hooks and opts.hooks.on_session_exit then
         opts.hooks.on_session_exit(session, exit_code)
       end
@@ -863,6 +916,8 @@ function M.create(name, agent_name)
     opts.hooks.on_session_start(session)
   end
 
+  persist.save()
+
   return session
 end
 
@@ -880,6 +935,7 @@ function M.rename(id, new_name)
   if vim.api.nvim_buf_is_valid(session.bufnr) then
     pcall(vim.api.nvim_buf_set_name, session.bufnr, "agent-session://" .. new_name .. " (" .. id .. ")")
   end
+  persist.save()
 
   vim.schedule(function()
     local ok_ui, ui_mod = pcall(require, "agent-session.ui")
@@ -915,6 +971,7 @@ function M.send_text(id, text, submit)
     session._busy = true
     session._user_submitted = true
     M.set_status(session, "running")
+    persist.on_submit(session)
   end
 
   if session.job_id > 0 then
@@ -1037,6 +1094,7 @@ function M.delete(id)
   if M._current_session_id == id then
     M._current_session_id = next(M._active_sessions)
   end
+  persist.save()
 
   vim.schedule(function()
     local ok_ui, ui_mod = pcall(require, "agent-session.ui")

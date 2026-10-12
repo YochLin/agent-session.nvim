@@ -40,6 +40,98 @@ end
 function M.setup(opts)
   config.setup(opts)
   M._setup_keymaps()
+  require("agent-session.persist").setup()
+end
+
+---Pick a name not used by any live session ("claude-1" -> "claude-1-2")
+---@param base string
+---@return string
+local function unique_session_name(base)
+  local function taken(n)
+    for _, s in pairs(session.get_all()) do
+      if s.name == n then
+        return true
+      end
+    end
+    return false
+  end
+  if not taken(base) then
+    return base
+  end
+  local i = 2
+  while taken(base .. "-" .. i) do
+    i = i + 1
+  end
+  return base .. "-" .. i
+end
+
+---Relaunch the sessions saved for this project (cwd at startup), resuming each agent's
+---conversation when its ID is known
+---@param opts? { open?: boolean } open: show the previously current session (default true)
+---@return Session[]
+function M.restore_sessions(opts)
+  opts = opts or {}
+  local persist = require("agent-session.persist")
+  local pending, current_name = persist.take_pending()
+  if #pending == 0 then
+    vim.notify("[agent-session] No saved sessions to restore for this project.", vim.log.levels.INFO)
+    return {}
+  end
+
+  table.sort(pending, function(a, b)
+    return (a.created_at or 0) < (b.created_at or 0)
+  end)
+
+  local restored, failed, current = {}, {}, nil
+  for _, entry in ipairs(pending) do
+    local ok, sess = pcall(session.create, unique_session_name(entry.name), entry.agent, {
+      cwd = entry.cwd,
+      resume_id = entry.agent_session_id,
+      created_at = entry.created_at,
+    })
+    if ok and sess then
+      table.insert(restored, sess)
+      if entry.name == current_name then
+        current = sess
+      end
+    else
+      table.insert(failed, entry)
+      vim.notify(
+        string.format("[agent-session] Failed to restore '%s': %s", entry.name, tostring(sess)),
+        vim.log.levels.ERROR
+      )
+    end
+  end
+
+  if #failed > 0 then
+    persist.put_back(failed)
+  else
+    persist.save()
+  end
+
+  current = current or restored[#restored]
+  if current then
+    if opts.open ~= false then
+      ui.open(current)
+    else
+      session.set_current(current.id)
+    end
+  end
+
+  vim.notify(string.format("[agent-session] Restored %d session(s).", #restored), vim.log.levels.INFO)
+  return restored
+end
+
+---Drop the saved sessions for this project without restoring them
+function M.discard_saved_sessions()
+  require("agent-session.persist").discard_pending()
+  vim.notify("[agent-session] Discarded saved sessions for this project.", vim.log.levels.INFO)
+end
+
+---Saved (not yet restored) sessions for this project
+---@return AgentSessionSavedEntry[]
+function M.saved_sessions()
+  return require("agent-session.persist").get_pending()
 end
 
 ---Create a new agent session and open its UI

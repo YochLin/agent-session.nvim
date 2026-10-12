@@ -57,6 +57,10 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     agent_session.select_agent()
   elseif subcmd == "sidebar" or subcmd == "tree" or subcmd == "panel" then
     agent_session.toggle_sidebar()
+  elseif subcmd == "restore" then
+    agent_session.restore_sessions()
+  elseif subcmd == "discard" or subcmd == "discard-saved" then
+    agent_session.discard_saved_sessions()
   elseif subcmd == "delete" then
     agent_session.delete_session(args[2])
   elseif subcmd == "rename" then
@@ -139,6 +143,8 @@ end, {
       "tree",
       "delete",
       "rename",
+      "restore",
+      "discard",
       "prompt",
       "send",
       "pipe",
@@ -228,6 +234,17 @@ end, { desc = "Select and launch an AI agent from picker" })
 vim.api.nvim_create_user_command("AgentSessionList", function()
   agent_session.list_sessions()
 end, { desc = "List active agent sessions" })
+
+vim.api.nvim_create_user_command("AgentSessionRestore", function(opts)
+  if opts.bang then
+    agent_session.discard_saved_sessions()
+  else
+    agent_session.restore_sessions()
+  end
+end, {
+  bang = true,
+  desc = "Restore sessions saved for this project (! discards them instead)",
+})
 
 vim.api.nvim_create_user_command("AgentSessionSidebar", function()
   agent_session.toggle_sidebar()

@@ -129,6 +129,39 @@ Use plane 16 (`U+100000`–`U+10FFFD`) — Nerd Fonts already occupies the lower
 }
 ```
 
+### Restoring sessions after a restart
+
+Open sessions are saved per project: one small JSON file keyed by the directory Neovim was started in, under `session_dir/projects/`. The next time you start Neovim in that directory you get asked whether to restore them (`persist.auto_restore`), or you can run `:AgentSessionRestore` whenever you like.
+
+Restored sessions keep their names and working directories. Each one also picks up its old conversation where the CLI supports it:
+
+| Agent | How the conversation ID is tracked | Resumed with |
+| :--- | :--- | :--- |
+| `claude` | Pinned at launch with `--session-id <uuid>` | `claude --resume <uuid>` |
+| `codex` | Read from `~/.codex/sessions/**/rollout-*.jsonl` after your first message | `codex resume <id>` |
+| `agy` | Read from `~/.gemini/antigravity-cli/history.jsonl` after your first message | `agy --conversation <id>` |
+
+Other agents are relaunched with a fresh conversation. So is a session where you never sent a message.
+
+The saved file is never cleared implicitly. Starting new sessions before restoring adds to it instead of replacing it. It only goes away when you restore it, discard it (`:AgentSessionRestore!` or "Discard" in the prompt), or close every session. Files of other projects untouched for `persist.max_age_days` are pruned on startup. Nothing here touches the CLIs' own conversation history.
+
+To make a custom agent resumable, give it a `resume` table:
+
+```lua
+agents = {
+  opus = {
+    cmd = "claude",
+    args = { "--model", "opus" },
+    resume = {
+      assign = function(id) return { "--session-id", id } end, -- pin a UUID at launch
+      args = function(id) return { "--resume", id } end, -- resume it later
+    },
+  },
+}
+```
+
+For CLIs that can't pin an ID, use `discover = "codex"`, `discover = "agy"`, or `discover = function(session, claimed) ... end` (return the conversation ID or nil) instead of `assign`. Set `resume = false` to always start fresh.
+
 ## Commands
 
 | Command | Description |
@@ -145,6 +178,8 @@ Use plane 16 (`U+100000`–`U+10FFFD`) — Nerd Fonts already occupies the lower
 | `:AgentSessionPipe [source] [target] [instruction]` | Send one session's output to another, with an optional instruction |
 | `:AgentSessionRename [name] [target]` | Rename the current or given session |
 | `:AgentSessionDelete [target]` | Stop and remove the current or given session |
+| `:AgentSessionRestore` | Relaunch the sessions saved for this project and resume their conversations (see [Restoring sessions](#restoring-sessions-after-a-restart)) |
+| `:AgentSessionRestore!` | Discard the saved sessions for this project |
 | `:AgentSessionSendLine` | Send `@file:line` (normal) or `@file:start-end` (visual) to the active session |
 | `:AgentSessionSendLineTo [target]` | Same, to a chosen session |
 | `:AgentSessionSendFile` | Send `@file` for the current buffer to the active session |
@@ -260,6 +295,11 @@ require("agent-session").setup({
     on_session_start = nil, -- function(session)
     on_session_exit = nil, -- function(session, exit_code)
     on_status_change = nil, -- function(session, new_status, old_status)
+  },
+  persist = {
+    enabled = true, -- save open sessions per project
+    auto_restore = "ask", -- on startup: "ask" | true (restore silently) | false (only :AgentSessionRestore)
+    max_age_days = 30, -- prune other projects' saved files untouched this long (0 = never)
   },
   session_dir = vim.fn.stdpath("data") .. "/agent-sessions",
 })

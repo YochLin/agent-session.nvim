@@ -133,6 +133,9 @@ Default options: >lua
 :AgentSessionDelete [target]
     Terminate and remove session.
 
+:AgentSessionRestore [!]
+    Restore saved sessions for this project. With [!], discards saved sessions.
+
 :AgentSessionSendLine
     Send `@file:line` (or `@file:start-end`) to the active session.
 
@@ -192,6 +195,12 @@ require("agent-session").rename_session(new_name, target)
 
 require("agent-session").delete_session(target)
     Close and delete an agent session.
+
+require("agent-session").restore_sessions(opts)
+    Restore saved sessions for the current project.
+
+require("agent-session").discard_saved_sessions()
+    Discard saved sessions for the current project.
 
 require("agent-session").send_line_ref_to(target, line1, line2)
     Send line/selection reference to a chosen target session.
