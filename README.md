@@ -143,6 +143,8 @@ Restored sessions keep their names and working directories. Each one also picks 
 
 Other agents are relaunched with a fresh conversation. So is a session where you never sent a message.
 
+To bring a conversation started outside Neovim under management, run `:AgentSessionResume claude <id>` (or `codex`, `agy`). The session resumes that conversation and keeps its ID for later restores.
+
 The saved file is never cleared implicitly. Starting new sessions before restoring adds to it instead of replacing it. It only goes away when you restore it, discard it (`:AgentSessionRestore!` or "Discard" in the prompt), or close every session. Files of other projects untouched for `persist.max_age_days` are pruned on startup. Nothing here touches the CLIs' own conversation history.
 
 To make a custom agent resumable, give it a `resume` table:
@@ -178,6 +180,7 @@ For CLIs that can't pin an ID, use `discover = "codex"`, `discover = "agy"`, or 
 | `:AgentSessionPipe [source] [target] [instruction]` | Send one session's output to another, with an optional instruction |
 | `:AgentSessionRename [name] [target]` | Rename the current or given session |
 | `:AgentSessionDelete [target]` | Stop and remove the current or given session |
+| `:AgentSessionResume <agent> <id> [name]` | Start a session that resumes an existing conversation, e.g. one started outside Neovim. Its ID is tracked for restores. |
 | `:AgentSessionRestore` | Relaunch the sessions saved for this project and resume their conversations (see [Restoring sessions](#restoring-sessions-after-a-restart)) |
 | `:AgentSessionRestore!` | Discard the saved sessions for this project |
 | `:AgentSessionSendLine` | Send `@file:line` (normal) or `@file:start-end` (visual) to the active session |

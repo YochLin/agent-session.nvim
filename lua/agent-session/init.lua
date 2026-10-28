@@ -162,6 +162,28 @@ function M.new_session(name, agent_name)
   return sess
 end
 
+---Start a session that resumes an existing agent conversation (e.g. one started outside
+---Neovim) and track its ID so restores resume it too
+---@param agent_name string Agent name with a `resume` config (e.g. "claude", "codex", "agy")
+---@param conversation_id string The agent CLI's conversation ID
+---@param name? string Session name
+---@return Session|nil
+function M.resume_session(agent_name, conversation_id, name)
+  if not agent_name or not conversation_id then
+    vim.notify("[agent-session] Usage: :AgentSessionResume <agent> <conversation-id> [name]", vim.log.levels.WARN)
+    return nil
+  end
+  local resume = require("agent-session.persist").resume_spec(agent_name)
+  if not resume or type(resume.args) ~= "function" then
+    vim.notify("[agent-session] Agent '" .. agent_name .. "' does not support resuming.", vim.log.levels.ERROR)
+    return nil
+  end
+
+  local sess = session.create(name, agent_name, { resume_id = conversation_id })
+  ui.open(sess, { focus_input = true })
+  return sess
+end
+
 ---Open interactive picker to select an agent
 ---@param on_select? fun(agent_name: string) Called with the chosen agent instead of the default create+open
 function M.select_agent(on_select)

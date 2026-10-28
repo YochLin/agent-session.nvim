@@ -57,6 +57,8 @@ vim.api.nvim_create_user_command("AgentSession", function(opts)
     agent_session.select_agent()
   elseif subcmd == "sidebar" or subcmd == "tree" or subcmd == "panel" then
     agent_session.toggle_sidebar()
+  elseif subcmd == "resume" then
+    agent_session.resume_session(args[2], args[3], args[4])
   elseif subcmd == "restore" then
     agent_session.restore_sessions()
   elseif subcmd == "discard" or subcmd == "discard-saved" then
@@ -143,6 +145,7 @@ end, {
       "tree",
       "delete",
       "rename",
+      "resume",
       "restore",
       "discard",
       "prompt",
@@ -161,7 +164,7 @@ end, {
     elseif (#l == 2 and has_trailing_space) or (#l == 3 and not has_trailing_space) then
       local sub = l[2]
       local lead = has_trailing_space and "" or (l[3] or "")
-      if sub == "new" or sub == "agent" then
+      if sub == "new" or sub == "agent" or sub == "resume" then
         local config = require("agent-session.config").get()
         local agents = vim.tbl_keys(config.agents or {})
         return vim.tbl_filter(function(item)
@@ -225,6 +228,29 @@ end, {
     end, agents)
   end,
   desc = "Create a new agent session (e.g. :AgentSessionNew agy)",
+})
+
+vim.api.nvim_create_user_command("AgentSessionResume", function(opts)
+  local args = vim.split(opts.args, "%s+", { trimempty = true })
+  agent_session.resume_session(args[1], args[2], args[3])
+end, {
+  nargs = "*",
+  complete = function(_, line)
+    local l = vim.split(line, "%s+", { trimempty = true })
+    if #l > 2 or (#l == 2 and vim.endswith(line, " ")) then
+      return {}
+    end
+    local persist = require("agent-session.persist")
+    local agents = vim.tbl_filter(function(name)
+      local resume = persist.resume_spec(name)
+      return resume ~= nil and type(resume.args) == "function"
+    end, vim.tbl_keys(require("agent-session.config").get().agents or {}))
+    local lead = l[2] or ""
+    return vim.tbl_filter(function(item)
+      return vim.startswith(item, lead)
+    end, agents)
+  end,
+  desc = "Resume an existing agent conversation (e.g. :AgentSessionResume claude <id>)",
 })
 
 vim.api.nvim_create_user_command("AgentSessionSelectAgent", function()
