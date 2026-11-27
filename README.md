@@ -4,7 +4,7 @@ Run Claude Code, Codex, Gemini, or any other agent CLI side by side in Neovim. S
 
 Pure Lua. No tmux, no dependencies.
 
-https://github.com/user-attachments/assets/cd545acf-2252-4ef8-a37d-2e7a003adb13
+https://github.com/user-attachments/assets/a547a3ce-c8b9-4174-9ab8-814efc79f08b
 
 ## Why agent-session.nvim
 
@@ -155,6 +155,8 @@ agents = {
     resume = {
       assign = function(id) return { "--session-id", id } end, -- pin a UUID at launch
       args = function(id) return { "--resume", id } end, -- resume it later
+      -- optional: only save the ID once the CLI has actually written that conversation
+      exists = function(id) return vim.fn.glob(vim.env.HOME .. "/.claude/projects/*/" .. id .. ".jsonl") ~= "" end,
     },
   },
 }
@@ -256,6 +258,7 @@ require("agent-session").setup({
     height = 0.8,
     float_width = 0.85, -- size in float / zoom mode
     float_height = 0.85,
+    -- split_width / split_height: size in split / vsplit mode (default: width / height)
     border = "rounded",
     title = " Agent Session ",
     tabbar = true, -- session tab bar at the top of the window
