@@ -133,6 +133,10 @@ Default options: >lua
 :AgentSessionDelete [target]
     Terminate and remove session.
 
+:AgentSessionResume {agent} {id} [name]
+    Start a session that resumes an existing conversation of {agent}, e.g.
+    one started outside Neovim. The ID is tracked for later restores.
+
 :AgentSessionRestore [!]
     Restore saved sessions for this project. With [!], discards saved sessions.
 
@@ -195,6 +199,9 @@ require("agent-session").rename_session(new_name, target)
 
 require("agent-session").delete_session(target)
     Close and delete an agent session.
+
+require("agent-session").resume_session(agent_name, conversation_id, name)
+    Start a session that resumes an existing agent conversation.
 
 require("agent-session").restore_sessions(opts)
     Restore saved sessions for the current project.
